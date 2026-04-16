@@ -193,6 +193,20 @@
             font-size: 0.7rem;
             font-family: monospace;
         }
+
+        .toggle-password {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            user-select: none;
+            color: #667eea;
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
     </style>
 </head>
 <body>
@@ -210,7 +224,10 @@
 
             <div class="input-group">
                 <label>🔒 Password</label>
-                <input type="password" id="password" placeholder="Enter your password">
+                <div class="password-wrapper">
+                    <input type="password" id="password" placeholder="Enter your password">
+                    <span class="toggle-password" onclick="togglePassword()">👁️</span>
+                </div>
             </div>
 
             <button class="login-btn" id="loginBtn">Enter the Grove 🌿</button>
@@ -218,7 +235,12 @@
             <div class="info-message">
                 💡 <strong>Demo Accounts:</strong><br>
                 👑 Admin: username <strong>admin</strong> | password <strong>admin123</strong><br>
-                👤 User: any username (no password required)
+                👤 Regular User: username <strong>user</strong> | password <strong>user123</strong><br>
+                📝 Or register a new account below
+            </div>
+
+            <div class="info-message" style="margin-top: 0.5rem; background: #e8f5e9; color: #2e7d32;">
+                ✨ <strong>New User?</strong> Just enter any username and password to create an account!
             </div>
 
             <div class="error-message" id="errorMessage"></div>
@@ -227,16 +249,58 @@
     <div class="admin-badge">🔐 Secure Login</div>
 
     <script>
+        // User database stored in localStorage
+        let users = [];
+
+        function loadUsers() {
+            const saved = localStorage.getItem('family_lineage_users');
+            if (saved) {
+                users = JSON.parse(saved);
+            } else {
+                // Default users
+                users = [
+                    { username: 'admin', password: 'admin123', isAdmin: true },
+                    { username: 'user', password: 'user123', isAdmin: false }
+                ];
+                saveUsers();
+            }
+        }
+
+        function saveUsers() {
+            localStorage.setItem('family_lineage_users', JSON.stringify(users));
+        }
+
+        function registerUser(username, password) {
+            // Check if user already exists
+            if (users.find(u => u.username === username)) {
+                return false;
+            }
+            users.push({ username: username, password: password, isAdmin: false });
+            saveUsers();
+            return true;
+        }
+
+        function authenticateUser(username, password) {
+            const user = users.find(u => u.username === username);
+            if (user && user.password === password) {
+                return user;
+            }
+            return null;
+        }
+
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+            } else {
+                passwordInput.type = 'password';
+            }
+        }
+
         const loginBtn = document.getElementById('loginBtn');
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
         const errorDiv = document.getElementById('errorMessage');
-
-        // Admin credentials
-        const ADMIN_CREDENTIALS = {
-            username: 'admin',
-            password: 'admin123'
-        };
 
         function showError(message) {
             errorDiv.textContent = message;
@@ -255,24 +319,38 @@
                 return;
             }
 
-            // Check if admin
-            if (username === ADMIN_CREDENTIALS.username) {
-                if (password !== ADMIN_CREDENTIALS.password) {
-                    showError('❌ Invalid admin password');
+            if (!password) {
+                showError('❌ Please enter a password');
+                return;
+            }
+
+            // Try to authenticate
+            let user = authenticateUser(username, password);
+            
+            if (!user) {
+                // User doesn't exist, register new user
+                if (registerUser(username, password)) {
+                    user = authenticateUser(username, password);
+                    showError('✅ Account created! Logging in...');
+                    setTimeout(() => {
+                        sessionStorage.setItem('currentUser', username);
+                        sessionStorage.setItem('isAdmin', 'false');
+                        window.location.href = 'platform.html';
+                    }, 1000);
                     return;
                 }
-                // Admin login
+            }
+            
+            if (user) {
                 sessionStorage.setItem('currentUser', username);
-                sessionStorage.setItem('isAdmin', 'true');
+                sessionStorage.setItem('isAdmin', user.isAdmin ? 'true' : 'false');
                 window.location.href = 'platform.html';
             } else {
-                // Regular user login (no password required)
-                sessionStorage.setItem('currentUser', username);
-                sessionStorage.setItem('isAdmin', 'false');
-                window.location.href = 'platform.html';
+                showError('❌ Invalid username or password');
             }
         }
 
+        loadUsers();
         loginBtn.addEventListener('click', login);
         
         usernameInput.addEventListener('keypress', (e) => {

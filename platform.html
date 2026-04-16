@@ -100,6 +100,7 @@
             padding: 0.8rem 1.5rem;
             border-radius: 1rem 1rem 0 0;
             font-weight: 600;
+            cursor: pointer;
         }
 
         .tab-btn.active {
@@ -265,16 +266,55 @@
 
         .names-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 0.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 0.75rem;
             margin-top: 1rem;
         }
 
         .name-item {
             background: #f5ede1;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
             font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .name-item:hover {
+            background: #ede0cf;
+            transform: translateX(-3px);
+        }
+
+        .name-info {
+            flex: 1;
+        }
+
+        .name-info strong {
+            display: block;
+            color: #5a3e2b;
+        }
+
+        .name-info small {
+            font-size: 0.7rem;
+            color: #8b6946;
+        }
+
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: #c82333;
+            transform: scale(1.05);
         }
 
         .admin-form {
@@ -310,17 +350,6 @@
             cursor: pointer;
         }
 
-        .delete-btn {
-            background: #dc3545;
-            color: white;
-            padding: 0.3rem 0.8rem;
-            border: none;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            margin-left: 0.5rem;
-            font-size: 0.7rem;
-        }
-
         .success-msg {
             background: #d4edda;
             color: #155724;
@@ -332,6 +361,60 @@
 
         .success-msg.show {
             display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .warning-msg {
+            background: #fff3cd;
+            color: #856404;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .warning-msg.show {
+            display: block;
+        }
+
+        .confirm-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .confirm-dialog-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .confirm-dialog-content button {
+            margin: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+        }
+
+        .confirm-yes {
+            background: #dc3545;
+            color: white;
+        }
+
+        .confirm-no {
+            background: #6c757d;
+            color: white;
         }
 
         @media (max-width: 768px) {
@@ -340,6 +423,11 @@
             }
             .generation {
                 gap: 0.8rem;
+            }
+            .name-item {
+                flex-direction: column;
+                gap: 0.5rem;
+                text-align: center;
             }
         }
     </style>
@@ -430,6 +518,7 @@
                 <button type="submit" class="submit-btn">➕ Add Person</button>
             </form>
             <div id="successMsg" class="success-msg"></div>
+            <div id="warningMsg" class="warning-msg"></div>
         </div>
     </div>
 </div>
@@ -606,7 +695,6 @@
         document.getElementById('totalPeopleCount').textContent = FAMILY_DB.people.length;
         
         // Calculate generations
-        const allIds = new Set(FAMILY_DB.people.map(p => p.id));
         let maxDepth = 0;
         FAMILY_DB.people.forEach(person => {
             let depth = 0;
@@ -620,14 +708,57 @@
         });
         document.getElementById('totalGenerations').textContent = maxDepth + 1;
         
-        // Display names
+        // Display names with delete buttons
         const namesGrid = document.getElementById('namesGrid');
         namesGrid.innerHTML = FAMILY_DB.people.map(person => `
-            <div class="name-item">
-                <strong>${escapeHtml(person.name)}</strong><br>
-                <small>ID: ${person.id} | ${person.gender}</small>
+            <div class="name-item" data-id="${person.id}">
+                <div class="name-info">
+                    <strong>${escapeHtml(person.name)}</strong>
+                    <small>ID: ${person.id} | ${person.gender}</small>
+                </div>
+                <button class="delete-btn" onclick="deletePerson('${person.id}')">🗑️ Delete</button>
             </div>
         `).join('');
+    }
+
+    function deletePerson(personId) {
+        // Show confirmation dialog
+        const person = FAMILY_DB.people.find(p => p.id === personId);
+        if (!person) return;
+        
+        // Check if person has children (anyone listing this person as parent)
+        const hasChildren = FAMILY_DB.people.some(p => p.parents && p.parents.includes(personId));
+        
+        let confirmMessage = `Are you sure you want to delete "${person.name}"?`;
+        if (hasChildren) {
+            confirmMessage += `\n\n⚠️ WARNING: This person has children in the database. Deleting them may break family relationships!`;
+        }
+        
+        if (confirm(confirmMessage)) {
+            // Remove the person
+            FAMILY_DB.people = FAMILY_DB.people.filter(p => p.id !== personId);
+            
+            // Remove this person from parents lists of others
+            FAMILY_DB.people.forEach(p => {
+                if (p.parents) {
+                    p.parents = p.parents.filter(pid => pid !== personId);
+                }
+            });
+            
+            saveData();
+            updateAdminPanel();
+            
+            const successMsg = document.getElementById('successMsg');
+            successMsg.textContent = `✅ "${person.name}" has been deleted successfully!`;
+            successMsg.classList.add('show');
+            setTimeout(() => successMsg.classList.remove('show'), 3000);
+            
+            // Refresh lineage view if it was showing this person
+            const currentSearch = document.getElementById('searchName').value;
+            if (currentSearch && findPersonByPartialName(currentSearch) === null) {
+                renderLineageTree('');
+            }
+        }
     }
 
     function addNewPerson(event) {
@@ -642,10 +773,20 @@
             return;
         }
         
+        // Check if name already exists
+        if (FAMILY_DB.people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+            const warningMsg = document.getElementById('warningMsg');
+            warningMsg.textContent = `⚠️ "${name}" already exists in the database!`;
+            warningMsg.classList.add('show');
+            setTimeout(() => warningMsg.classList.remove('show'), 3000);
+            return;
+        }
+        
         const parents = [];
         if (parent1Id) parents.push(parent1Id);
         if (parent2Id) parents.push(parent2Id);
         
+        // Generate new ID
         const newId = 'p' + (FAMILY_DB.people.length + 100);
         const newPerson = {
             id: newId,
@@ -659,7 +800,7 @@
         
         document.getElementById('addPersonForm').reset();
         const successMsg = document.getElementById('successMsg');
-        successMsg.textContent = `✅ ${name} added successfully!`;
+        successMsg.textContent = `✅ "${name}" added successfully! (ID: ${newId})`;
         successMsg.classList.add('show');
         setTimeout(() => successMsg.classList.remove('show'), 3000);
         
@@ -697,6 +838,9 @@
     if (!checkAuth()) {
         throw new Error('Auth failed');
     }
+
+    // Make deletePerson available globally
+    window.deletePerson = deletePerson;
 
     // Event listeners
     document.getElementById('logoutBtn').addEventListener('click', logout);
