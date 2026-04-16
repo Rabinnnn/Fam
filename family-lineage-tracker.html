@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Ancestral Threads | Family Lineage Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(145deg, #e9dbc7 0%, #d8cdb4 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+        }
+
+        /* main app container */
+        .app-container {
+            max-width: 1400px;
+            width: 100%;
+            background: rgba(255, 250, 240, 0.92);
+            backdrop-filter: blur(2px);
+            border-radius: 3rem;
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        /* login & main panels */
+        .panel {
+            padding: 2rem 2rem 2.5rem;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* login card */
+        .login-card {
+            background: #fffaf2;
+            max-width: 450px;
+            margin: 2rem auto;
+            border-radius: 2rem;
+            padding: 2rem 2rem 2.2rem;
+            text-align: center;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
+            border: 1px solid #f0e2cf;
+        }
+
+        .login-card h2 {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #5a3e2b;
+            letter-spacing: -0.3px;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-card p {
+            color: #7b5e44;
+            margin-bottom: 1.8rem;
+        }
+
+        .login-card input {
+            width: 100%;
+            padding: 0.9rem 1rem;
+            margin-bottom: 1.5rem;
+            border: 2px solid #e5d5bd;
+            border-radius: 3rem;
+            font-size: 1rem;
+            background: white;
+            transition: 0.2s;
+        }
+
+        .login-card input:focus {
+            outline: none;
+            border-color: #b97f44;
+            box-shadow: 0 0 0 3px rgba(185, 127, 68, 0.2);
+        }
+
+        button {
+            background: #8b5a2b;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.8rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 3rem;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        button:hover {
+            background: #6f451f;
+            transform: scale(0.98);
+        }
+
+        .error-msg {
+            color: #b13e3e;
+            font-size: 0.85rem;
+            margin-top: -0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        /* header & navbar */
+        .main-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            padding-bottom: 1.2rem;
+            border-bottom: 2px dashed #e2cfb0;
+            margin-bottom: 2rem;
+        }
+
+        .logo h1 {
+            font-size: 1.9rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #6b4226, #a5673f);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .logo span {
+            font-size: 0.85rem;
+            color: #9b7a5a;
+            display: block;
+        }
+
+        .user-greeting {
+            background: #ede3d4;
+            padding: 0.5rem 1.2rem;
+            border-radius: 2rem;
+            font-weight: 500;
+            color: #5a3e2b;
+        }
+
+        .logout-btn {
+            background: #c09a6b;
+            margin-left: 1rem;
+            padding: 0.4rem 1.2rem;
+            font-size: 0.8rem;
+        }
+
+        /* search section */
+        .search-section {
+            background: #fef7ed;
+            border-radius: 2rem;
+            padding: 1.2rem 1.8rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        .search-form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: flex-end;
+        }
+
+        .search-form div {
+            flex: 2;
+            min-width: 180px;
+        }
+
+        .search-form label {
+            display: block;
+            font-weight: 600;
+            color: #5e3c22;
+            margin-bottom: 0.4rem;
+            font-size: 0.85rem;
+        }
+
+        .search-form input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 1px solid #e0cfb6;
+            border-radius: 2rem;
+            background: white;
+        }
+
+        .search-form button {
+            background: #8b5a2b;
+            padding: 0.7rem 1.5rem;
+            align-self: center;
+        }
+
+        .search-status {
+            margin-top: 0.8rem;
+            font-style: italic;
+            color: #9e6d42;
+        }
+
+        /* visual lineage tree */
+        .lineage-container {
+            background: #fcf8ef;
+            border-radius: 2rem;
+            padding: 1.5rem;
+            box-shadow: inset 0 0 0 1px rgba(255,245,225,0.8), 0 10px 20px rgba(0,0,0,0.05);
+            overflow-x: auto;
+        }
+
+        .tree-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #4f321b;
+            margin-bottom: 1rem;
+            border-left: 6px solid #c2894b;
+            padding-left: 1rem;
+        }
+
+        .family-tree {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 320px;
+        }
+
+        /* tree nodes */
+        .tree-node {
+            text-align: center;
+            background: linear-gradient(145deg, #fff6e8, #ffefdd);
+            border-radius: 2rem;
+            padding: 0.6rem 1.4rem;
+            margin: 0.5rem;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.08);
+            border: 1px solid #e7cfb0;
+            transition: all 0.2s;
+            font-weight: 500;
+            color: #4a2f1a;
+            min-width: 140px;
+        }
+
+        .root-node {
+            background: #e7d2b5;
+            border-bottom: 4px solid #b57138;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .generation {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        .gen-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #b08052;
+            letter-spacing: 1px;
+            text-align: center;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .connector-line {
+            width: 100%;
+            text-align: center;
+            font-size: 1.4rem;
+            color: #c2a075;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 3rem;
+            color: #9e7b58;
+        }
+
+        /* responsive */
+        @media (max-width: 720px) {
+            .panel {
+                padding: 1.2rem;
+            }
+            .tree-node {
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+                min-width: 100px;
+            }
+            .generation {
+                gap: 0.8rem;
+            }
+            .search-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .main-header {
+                flex-direction: column;
+                gap: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container" id="appRoot">
+    <!-- LOGIN PANEL -->
+    <div id="loginPanel" class="panel">
+        <div class="login-card">
+            <h2>🌳 Ancestral Threads</h2>
+            <p>trace your roots · honor your bloodline</p>
+            <input type="text" id="loginUsername" placeholder="Enter your name (any)" autocomplete="off">
+            <button id="loginBtn">enter the grove 🌿</button>
+            <div id="loginError" class="error-msg"></div>
+            <div style="font-size:0.7rem; margin-top:1rem; color:#aa8b64;">demo: just type any name → login</div>
+        </div>
+    </div>
+
+    <!-- MAIN APP PANEL (after login) -->
+    <div id="mainPanel" class="panel hidden">
+        <div class="main-header">
+            <div class="logo">
+                <h1>📜 Ancestral Threads</h1>
+                <span>family lineage visualizer</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <div class="user-greeting" id="greetingUser"></div>
+                <button id="logoutMainBtn" class="logout-btn">↺ leave</button>
+            </div>
+        </div>
+
+        <div class="search-section">
+            <form id="lineageSearchForm" class="search-form">
+                <div>
+                    <label>👤 Your full name (as stored in lineage)</label>
+                    <input type="text" id="searchName" placeholder="e.g., Emma, Lucas, Sophia, Oliver..." autocomplete="off">
+                </div>
+                <button type="submit">🌿 reveal lineage</button>
+            </form>
+            <div id="searchStatus" class="search-status"></div>
+        </div>
+
+        <div class="lineage-container">
+            <div class="tree-title" id="dynamicTreeTitle">✨ lineage tree</div>
+            <div id="visualTreeContainer">
+                <!-- dynamic tree will be drawn here -->
+                <div class="no-data">🔍 Enter a name above to see the family roots.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --------------------------------------------------------------
+    //  FAMILY DATA (JSON object) - no external DB, all stored here.
+    //  Structure: each person has id, name, gender (optional), parents (array of parent ids)
+    //  For simplicity, we build a tree with 3 generations (grandparents + parents + children)
+    //  and some example lineage branches.
+    // --------------------------------------------------------------
+    const FAMILY_DB = {
+        "people": [
+            { "id": "g1", "name": "Eleanor Whitmore", "gender": "female", "parents": [] },
+            { "id": "g2", "name": "Harold Whitmore", "gender": "male", "parents": [] },
+            { "id": "g3", "name": "Beatrice Clarke", "gender": "female", "parents": [] },
+            { "id": "g4", "name": "Reginald Clarke", "gender": "male", "parents": [] },
+            // second gen (parents)
+            { "id": "p1", "name": "Margaret Whitmore", "gender": "female", "parents": ["g1", "g2"] },
+            { "id": "p2", "name": "Thomas Whitmore", "gender": "male", "parents": ["g1", "g2"] },
+            { "id": "p3", "name": "Eleanor Clarke", "gender": "female", "parents": ["g3", "g4"] },
+            { "id": "p4", "name": "Arthur Clarke", "gender": "male", "parents": ["g3", "g4"] },
+            // children (third gen - current family)
+            { "id": "c1", "name": "Emma Whitmore-Clarke", "gender": "female", "parents": ["p1", "p3"] },
+            { "id": "c2", "name": "Lucas Whitmore", "gender": "male", "parents": ["p2", "p3"] },
+            { "id": "c3", "name": "Sophia Whitmore", "gender": "female", "parents": ["p1", "p4"] },
+            { "id": "c4", "name": "Oliver Clarke", "gender": "male", "parents": ["p4", "p3"] },
+            { "id": "c5", "name": "Isabella Whitmore", "gender": "female", "parents": ["p2", "p1"] } // interesting
+        ]
+    };
+
+    // Helper: get person by name (case-insensitive)
+    function findPersonByName(name) {
+        const trimmed = name.trim().toLowerCase();
+        return FAMILY_DB.people.find(p => p.name.toLowerCase() === trimmed);
+    }
+
+    // Recursively collect ancestors (parents, grandparents, etc.) up to root
+    // returns array of person objects (unique, ordered from target up to oldest)
+    function getAncestors(person, visited = new Set()) {
+        if (!person || visited.has(person.id)) return [];
+        visited.add(person.id);
+        let ancestors = [person];
+        if (person.parents && person.parents.length) {
+            for (let parentId of person.parents) {
+                const parentObj = FAMILY_DB.people.find(p => p.id === parentId);
+                if (parentObj) {
+                    ancestors = ancestors.concat(getAncestors(parentObj, visited));
+                }
+            }
+        }
+        return ancestors;
+    }
+
+    // Build generation levels from ancestors list (root = oldest generation)
+    function buildGenerations(ancestors) {
+        // we need to map generations based on distance from target person
+        // target is the starting person (index 0 in ancestors list? Actually getAncestors returns [person, parents, grandparents...])
+        // But order is not strictly level-based due to recursion. Let's compute level by counting steps to root.
+        // Better: compute depth from target to each ancestor: distance = number of edges to target
+        if (!ancestors.length) return [];
+        
+        // create a map person -> depth (0 = self)
+        const depthMap = new Map();
+        const targetId = ancestors[0].id;
+        
+        function computeDepth(person, currentDepth) {
+            if (!person) return;
+            depthMap.set(person.id, currentDepth);
+            if (person.parents) {
+                for (let pid of person.parents) {
+                    const par = FAMILY_DB.people.find(p => p.id === pid);
+                    if (par && !depthMap.has(par.id)) {
+                        computeDepth(par, currentDepth + 1);
+                    }
+                }
+            }
+        }
+        const targetPerson = ancestors.find(a => a.id === targetId);
+        if (targetPerson) computeDepth(targetPerson, 0);
+        
+        // group by depth
+        const groups = new Map(); // depth -> array of persons
+        for (let anc of ancestors) {
+            let d = depthMap.get(anc.id);
+            if (d !== undefined) {
+                if (!groups.has(d)) groups.set(d, []);
+                groups.get(d).push(anc);
+            }
+        }
+        // convert to sorted array of generations: depth 0 (self), depth 1 (parents), depth 2 (grandparents) ...
+        const maxDepth = Math.max(...groups.keys());
+        const result = [];
+        for (let i = 0; i <= maxDepth; i++) {
+            result.push(groups.get(i) || []);
+        }
+        return result;
+    }
+
+    // render beautiful tree HTML
+    function renderLineageTree(targetName) {
+        const container = document.getElementById("visualTreeContainer");
+        const titleSpan = document.getElementById("dynamicTreeTitle");
+        if (!targetName || targetName.trim() === "") {
+            container.innerHTML = `<div class="no-data">🌱 Please enter a family member's name.</div>`;
+            titleSpan.innerHTML = `✨ lineage tree`;
+            return;
+        }
+        
+        const person = findPersonByName(targetName);
+        if (!person) {
+            container.innerHTML = `<div class="no-data">🍂 No records found for "${escapeHtml(targetName)}".<br>Try: Emma, Lucas, Sophia, Oliver, Margaret, Eleanor Whitmore, etc.</div>`;
+            titleSpan.innerHTML = `✨ not found`;
+            return;
+        }
+        
+        const ancestorsList = getAncestors(person);
+        // ancestorsList includes self and all ancestors, remove duplicates via id set
+        const uniqueAncestors = [];
+        const seenIds = new Set();
+        for (let a of ancestorsList) {
+            if (!seenIds.has(a.id)) {
+                seenIds.add(a.id);
+                uniqueAncestors.push(a);
+            }
+        }
+        const generations = buildGenerations(uniqueAncestors);
+        // generations[0] = target person, generations[1] = parents, generations[2] = grandparents ...
+        if (generations.length === 0) {
+            container.innerHTML = `<div class="no-data">🌿 No lineage data for ${escapeHtml(targetName)}.</div>`;
+            return;
+        }
+        
+        titleSpan.innerHTML = `🌳 Lineage of ${escapeHtml(person.name)}`;
+        
+        // build visual tree (oldest at top, target at bottom)
+        // reverse generations so oldest appears first (grandparents at top)
+        const reversed = [...generations].reverse();
+        const genLabels = ["great-grandparents / ancestors", "grandparents", "parents", "self & siblings"];
+        
+        let html = `<div class="family-tree">`;
+        for (let idx = 0; idx < reversed.length; idx++) {
+            const level = reversed[idx];
+            const depthFromTop = idx;
+            let labelText = "";
+            if (depthFromTop === 0) labelText = "👴👵 ancestors";
+            else if (depthFromTop === 1) labelText = "👵👴 grandparents";
+            else if (depthFromTop === 2) labelText = "👨‍👩‍👧 parents";
+            else if (depthFromTop === 3) labelText = "🌟 current generation";
+            else labelText = `generation ${depthFromTop}`;
+            
+            html += `<div class="gen-label">${labelText}</div>`;
+            html += `<div class="generation">`;
+            for (let member of level) {
+                const parentBadge = (member.parents && member.parents.length) ? '🌿' : '🌱';
+                html += `<div class="tree-node ${depthFromTop === reversed.length-1 ? 'root-node' : ''}" title="${member.id}">
+                            ${parentBadge} <strong>${escapeHtml(member.name)}</strong>
+                         </div>`;
+            }
+            html += `</div>`;
+            if (idx < reversed.length - 1) {
+                html += `<div class="connector-line">▼</div>`;
+            }
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+    
+    // simple escape
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+            return c;
+        });
+    }
+
+    // ----- SESSION & LOGIC (no backend, localStorage for session persistence) -----
+    let currentUser = null;
+    
+    // elements
+    const loginPanel = document.getElementById('loginPanel');
+    const mainPanel = document.getElementById('mainPanel');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginUsername = document.getElementById('loginUsername');
+    const loginErrorDiv = document.getElementById('loginError');
+    const greetingSpan = document.getElementById('greetingUser');
+    const logoutMainBtn = document.getElementById('logoutMainBtn');
+    const searchForm = document.getElementById('lineageSearchForm');
+    const searchNameInput = document.getElementById('searchName');
+    const searchStatusSpan = document.getElementById('searchStatus');
+
+    // update UI after login
+    function setLoggedIn(username) {
+        currentUser = username;
+        // store in sessionStorage to survive refresh
+        sessionStorage.setItem('lineage_user', username);
+        loginPanel.classList.add('hidden');
+        mainPanel.classList.remove('hidden');
+        greetingSpan.textContent = `👋 ${escapeHtml(username)}`;
+        searchNameInput.value = '';
+        const container = document.getElementById("visualTreeContainer");
+        if (container) container.innerHTML = `<div class="no-data">🔍 Enter a family name to see the roots.<br>Try: Emma, Lucas, Sophia, Oliver, Margaret, Thomas, Eleanor Whitmore</div>`;
+        const titleSpan = document.getElementById("dynamicTreeTitle");
+        if (titleSpan) titleSpan.innerHTML = `✨ lineage tree`;
+        searchStatusSpan.innerHTML = '';
+        loginErrorDiv.textContent = '';
+    }
+    
+    function logout() {
+        currentUser = null;
+        sessionStorage.removeItem('lineage_user');
+        loginPanel.classList.remove('hidden');
+        mainPanel.classList.add('hidden');
+        loginUsername.value = '';
+        searchNameInput.value = '';
+        if (loginErrorDiv) loginErrorDiv.textContent = '';
+    }
+    
+    // handle login
+    function attemptLogin() {
+        const name = loginUsername.value.trim();
+        if (name === "") {
+            loginErrorDiv.textContent = "Please enter a name to enter the grove.";
+            return;
+        }
+        // any name allowed (simple demo)
+        setLoggedIn(name);
+    }
+    
+    // search lineage from main panel
+    function handleSearch(e) {
+        e.preventDefault();
+        if (!currentUser) return;
+        const searchValue = searchNameInput.value.trim();
+        if (searchValue === "") {
+            searchStatusSpan.innerHTML = "✨ Please type a family member name (Emma, Lucas, Sophia, Oliver, etc.)";
+            return;
+        }
+        const exists = findPersonByName(searchValue);
+        if (!exists) {
+            searchStatusSpan.innerHTML = `⚠️ "${escapeHtml(searchValue)}" not found in lineage data. Available: Eleanor Whitmore, Harold Whitmore, Margaret, Thomas, Emma, Lucas, Sophia, Oliver, Isabella, etc.`;
+            renderLineageTree(null); // show not found
+        } else {
+            searchStatusSpan.innerHTML = `✅ showing lineage for ${escapeHtml(searchValue)}`;
+            renderLineageTree(searchValue);
+        }
+    }
+    
+    // initialize session from storage
+    function initSession() {
+        const storedUser = sessionStorage.getItem('lineage_user');
+        if (storedUser && storedUser.trim() !== "") {
+            setLoggedIn(storedUser);
+        } else {
+            loginPanel.classList.remove('hidden');
+            mainPanel.classList.add('hidden');
+        }
+    }
+    
+    // attach events
+    loginBtn.addEventListener('click', attemptLogin);
+    loginUsername.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptLogin(); });
+    logoutMainBtn.addEventListener('click', logout);
+    searchForm.addEventListener('submit', handleSearch);
+    
+    // optional: quick demo prefill helper (no external)
+    window.addEventListener('DOMContentLoaded', () => {
+        initSession();
+        // add a little extra style for dynamic tree
+        console.log("🌳 Ancestral Threads ready — data seeded in JSON");
+    });
+    
+    // also expose reset if needed? not required. 
+    // Add some additional test data to make richer
+    // Already enough examples: Emma, Lucas, Sophia, Oliver, Margaret, Thomas, Eleanor, etc.
+    // Ensure consistency: all names in people array are unique enough.
+    // for extra completeness: add a fallback method to display multiple ancestors correctly.
+    
+    // minor fix: we want grandparents to show all ancestors beautifully. 
+    // The lineage algorithm works even for deeper ancestors, but our dataset has only 3 generations.
+    // Additional info for user: show that there are multiple paths.
+    // Also ensure that any parent reference exists.
+    // Check data integrity: all parent ids exist.
+    const allIds = new Set(FAMILY_DB.people.map(p => p.id));
+    FAMILY_DB.people.forEach(p => {
+        if (p.parents) {
+            p.parents.forEach(pid => {
+                if (!allIds.has(pid)) console.warn(`Missing parent id ${pid} for ${p.name}`);
+            });
+        }
+    });
+    
+    // final improvement: ensure 'Beatrice Clarke' etc show up correctly
+    // Everything is ready!
+</script>
+</body>
+</html>

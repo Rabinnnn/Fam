@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Ancestral Threads | Family Lineage Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(145deg, #e9dbc7 0%, #d8cdb4 100%);
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
+        .app-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 250, 240, 0.95);
+            border-radius: 2rem;
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        /* Header */
+        .main-header {
+            background: linear-gradient(135deg, #5a3e2b 0%, #3e2a1c 100%);
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .logo h1 {
+            color: #ffefd5;
+            font-size: 1.8rem;
+            letter-spacing: -0.5px;
+        }
+
+        .logo span {
+            color: #c9ae86;
+            font-size: 0.8rem;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: rgba(255,255,255,0.1);
+            padding: 0.5rem 1.2rem;
+            border-radius: 2rem;
+        }
+
+        .user-info span {
+            color: #ffefd5;
+        }
+
+        .admin-badge {
+            background: #ffd700;
+            color: #5a3e2b;
+            padding: 0.2rem 0.8rem;
+            border-radius: 2rem;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .logout-btn {
+            background: #c09a6b;
+            color: white;
+            border: none;
+            padding: 0.5rem 1.2rem;
+            border-radius: 2rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #a07d52;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem 2rem 0 2rem;
+            background: #fcf8ef;
+            border-bottom: 2px solid #e2cfb0;
+        }
+
+        .tab-btn {
+            background: transparent;
+            color: #8b6946;
+            padding: 0.8rem 1.5rem;
+            border-radius: 1rem 1rem 0 0;
+            font-weight: 600;
+        }
+
+        .tab-btn.active {
+            background: #fff5e6;
+            color: #5a3e2b;
+            border-bottom: 3px solid #c2894b;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 2rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Search Section */
+        .search-section {
+            background: #fef7ed;
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .search-form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: flex-end;
+        }
+
+        .search-form div {
+            flex: 2;
+            min-width: 200px;
+            position: relative;
+        }
+
+        .search-form label {
+            display: block;
+            font-weight: 600;
+            color: #5e3c22;
+            margin-bottom: 0.4rem;
+        }
+
+        .search-form input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 2px solid #e0cfb6;
+            border-radius: 1rem;
+            background: white;
+        }
+
+        .search-form button {
+            background: #8b5a2b;
+            color: white;
+            padding: 0.7rem 1.5rem;
+            border: none;
+            border-radius: 1rem;
+            cursor: pointer;
+        }
+
+        /* Lineage Tree */
+        .lineage-container {
+            background: #fcf8ef;
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+
+        .tree-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #4f321b;
+            margin-bottom: 1rem;
+            border-left: 6px solid #c2894b;
+            padding-left: 1rem;
+        }
+
+        .family-tree {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .tree-node {
+            text-align: center;
+            background: linear-gradient(145deg, #fff6e8, #ffefdd);
+            border-radius: 1rem;
+            padding: 0.6rem 1.4rem;
+            margin: 0.5rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+            border: 1px solid #e7cfb0;
+            font-weight: 500;
+            color: #4a2f1a;
+            min-width: 140px;
+        }
+
+        .generation {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .gen-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #b08052;
+            text-align: center;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .connector-line {
+            text-align: center;
+            font-size: 1.4rem;
+            color: #c2a075;
+        }
+
+        /* Admin Panel Styles */
+        .admin-stats {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1.5rem;
+            border-radius: 1.5rem;
+            color: white;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: rgba(255,255,255,0.2);
+            padding: 1rem;
+            border-radius: 1rem;
+            text-align: center;
+            flex: 1;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .names-list {
+            background: white;
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .names-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .name-item {
+            background: #f5ede1;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .admin-form {
+            background: white;
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #5e3c22;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.7rem;
+            border: 2px solid #e0cfb6;
+            border-radius: 0.8rem;
+        }
+
+        .submit-btn {
+            background: #5a3e2b;
+            color: white;
+            padding: 0.7rem 1.5rem;
+            border: none;
+            border-radius: 1rem;
+            cursor: pointer;
+        }
+
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            margin-left: 0.5rem;
+            font-size: 0.7rem;
+        }
+
+        .success-msg {
+            background: #d4edda;
+            color: #155724;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .success-msg.show {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .tab-content {
+                padding: 1rem;
+            }
+            .generation {
+                gap: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="main-header">
+        <div class="logo">
+            <h1>📜 Ancestral Threads</h1>
+            <span>family lineage visualizer</span>
+        </div>
+        <div class="user-info">
+            <span>👋 <span id="usernameDisplay"></span></span>
+            <span id="adminBadge" class="admin-badge" style="display: none;">👑 ADMIN</span>
+            <button id="logoutBtn" class="logout-btn">🚪 Logout</button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="view">🔍 View Lineage</button>
+        <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
+    </div>
+
+    <!-- View Lineage Tab -->
+    <div id="viewTab" class="tab-content active">
+        <div class="search-section">
+            <form id="searchForm" class="search-form">
+                <div>
+                    <label>👤 Search Family Member</label>
+                    <input type="text" id="searchName" placeholder="e.g., Emma, Lucas, Sophia..." autocomplete="off">
+                </div>
+                <button type="submit">🌿 Reveal Lineage</button>
+            </form>
+            <div id="searchStatus" style="margin-top: 0.8rem; color: #9e6d42;"></div>
+        </div>
+
+        <div class="lineage-container">
+            <div class="tree-title" id="treeTitle">✨ Lineage Tree</div>
+            <div id="visualTreeContainer">
+                <div style="text-align: center; padding: 3rem; color: #9e7b58;">
+                    🔍 Enter a name above to see the family roots.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel Tab -->
+    <div id="adminTab" class="tab-content">
+        <div class="admin-stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalPeopleCount">0</div>
+                <div>Total Family Members</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalGenerations">0</div>
+                <div>Generations</div>
+            </div>
+        </div>
+
+        <div class="names-list">
+            <h3>📋 All Family Names</h3>
+            <div id="namesGrid" class="names-grid"></div>
+        </div>
+
+        <div class="admin-form">
+            <h3>➕ Add New Family Member</h3>
+            <form id="addPersonForm">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="newName" required placeholder="e.g., John Doe">
+                </div>
+                <div class="form-group">
+                    <label>Gender</label>
+                    <select id="newGender">
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Parent 1 ID (optional)</label>
+                    <input type="text" id="parent1Id" placeholder="Enter parent ID (e.g., p1, g1)">
+                </div>
+                <div class="form-group">
+                    <label>Parent 2 ID (optional)</label>
+                    <input type="text" id="parent2Id" placeholder="Enter parent ID">
+                </div>
+                <button type="submit" class="submit-btn">➕ Add Person</button>
+            </form>
+            <div id="successMsg" class="success-msg"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==============================================================
+    // FAMILY DATABASE (stored in localStorage for persistence)
+    // ==============================================================
+    let FAMILY_DB = {
+        "people": [
+            { "id": "g1", "name": "Eleanor Whitmore", "gender": "female", "parents": [] },
+            { "id": "g2", "name": "Harold Whitmore", "gender": "male", "parents": [] },
+            { "id": "g3", "name": "Beatrice Clarke", "gender": "female", "parents": [] },
+            { "id": "g4", "name": "Reginald Clarke", "gender": "male", "parents": [] },
+            { "id": "p1", "name": "Margaret Whitmore", "gender": "female", "parents": ["g1", "g2"] },
+            { "id": "p2", "name": "Thomas Whitmore", "gender": "male", "parents": ["g1", "g2"] },
+            { "id": "p3", "name": "Eleanor Clarke", "gender": "female", "parents": ["g3", "g4"] },
+            { "id": "p4", "name": "Arthur Clarke", "gender": "male", "parents": ["g3", "g4"] },
+            { "id": "c1", "name": "Emma Whitmore-Clarke", "gender": "female", "parents": ["p1", "p3"] },
+            { "id": "c2", "name": "Lucas Whitmore", "gender": "male", "parents": ["p2", "p3"] },
+            { "id": "c3", "name": "Sophia Whitmore", "gender": "female", "parents": ["p1", "p4"] },
+            { "id": "c4", "name": "Oliver Clarke", "gender": "male", "parents": ["p4", "p3"] },
+            { "id": "c5", "name": "Isabella Whitmore", "gender": "female", "parents": ["p2", "p1"] }
+        ]
+    };
+
+    // Load data from localStorage
+    function loadData() {
+        const saved = localStorage.getItem('family_lineage_db');
+        if (saved) {
+            FAMILY_DB = JSON.parse(saved);
+        } else {
+            saveData();
+        }
+    }
+
+    function saveData() {
+        localStorage.setItem('family_lineage_db', JSON.stringify(FAMILY_DB));
+    }
+
+    loadData();
+
+    // Helper functions
+    function getAllNames() {
+        return FAMILY_DB.people.map(p => p.name);
+    }
+
+    function findPersonByPartialName(searchTerm) {
+        const term = searchTerm.trim().toLowerCase();
+        if (term === "") return null;
+        let exactMatch = FAMILY_DB.people.find(p => p.name.toLowerCase() === term);
+        if (exactMatch) return exactMatch;
+        let partialMatches = FAMILY_DB.people.filter(p => p.name.toLowerCase().includes(term));
+        return partialMatches.length > 0 ? partialMatches[0] : null;
+    }
+
+    function getAncestors(person, visited = new Set()) {
+        if (!person || visited.has(person.id)) return [];
+        visited.add(person.id);
+        let ancestors = [person];
+        if (person.parents && person.parents.length) {
+            for (let parentId of person.parents) {
+                const parentObj = FAMILY_DB.people.find(p => p.id === parentId);
+                if (parentObj) {
+                    ancestors = ancestors.concat(getAncestors(parentObj, visited));
+                }
+            }
+        }
+        return ancestors;
+    }
+
+    function buildGenerations(ancestors) {
+        if (!ancestors.length) return [];
+        const depthMap = new Map();
+        const targetId = ancestors[0].id;
+        
+        function computeDepth(person, currentDepth) {
+            if (!person) return;
+            depthMap.set(person.id, currentDepth);
+            if (person.parents) {
+                for (let pid of person.parents) {
+                    const par = FAMILY_DB.people.find(p => p.id === pid);
+                    if (par && !depthMap.has(par.id)) {
+                        computeDepth(par, currentDepth + 1);
+                    }
+                }
+            }
+        }
+        
+        const targetPerson = ancestors.find(a => a.id === targetId);
+        if (targetPerson) computeDepth(targetPerson, 0);
+        
+        const groups = new Map();
+        for (let anc of ancestors) {
+            let d = depthMap.get(anc.id);
+            if (d !== undefined) {
+                if (!groups.has(d)) groups.set(d, []);
+                groups.get(d).push(anc);
+            }
+        }
+        
+        const maxDepth = Math.max(...groups.keys());
+        const result = [];
+        for (let i = 0; i <= maxDepth; i++) {
+            result.push(groups.get(i) || []);
+        }
+        return result;
+    }
+
+    function renderLineageTree(searchTerm) {
+        const container = document.getElementById("visualTreeContainer");
+        const titleSpan = document.getElementById("treeTitle");
+        
+        if (!searchTerm || searchTerm.trim() === "") {
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🌱 Please enter a family member's name.</div>`;
+            return;
+        }
+        
+        const person = findPersonByPartialName(searchTerm);
+        if (!person) {
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🍂 No records found for "${escapeHtml(searchTerm)}"</div>`;
+            return;
+        }
+        
+        const ancestorsList = getAncestors(person);
+        const uniqueAncestors = [];
+        const seenIds = new Set();
+        for (let a of ancestorsList) {
+            if (!seenIds.has(a.id)) {
+                seenIds.add(a.id);
+                uniqueAncestors.push(a);
+            }
+        }
+        
+        const generations = buildGenerations(uniqueAncestors);
+        titleSpan.innerHTML = `🌳 Lineage of ${escapeHtml(person.name)}`;
+        
+        const reversed = [...generations].reverse();
+        const genNames = ["👴👵 Great-Grandparents", "👵👴 Grandparents", "👨‍👩‍👧 Parents", "🌟 Current Generation"];
+        
+        let html = `<div class="family-tree">`;
+        for (let idx = 0; idx < reversed.length; idx++) {
+            const level = reversed[idx];
+            const labelText = genNames[idx] || `Generation ${idx + 1}`;
+            html += `<div class="gen-label">${labelText}</div>`;
+            html += `<div class="generation">`;
+            for (let member of level) {
+                html += `<div class="tree-node"><strong>${escapeHtml(member.name)}</strong></div>`;
+            }
+            html += `</div>`;
+            if (idx < reversed.length - 1 && level.length > 0) {
+                html += `<div class="connector-line">▼</div>`;
+            }
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // Admin functions
+    function updateAdminPanel() {
+        if (!isAdmin) return;
+        
+        // Update stats
+        document.getElementById('totalPeopleCount').textContent = FAMILY_DB.people.length;
+        
+        // Calculate generations
+        const allIds = new Set(FAMILY_DB.people.map(p => p.id));
+        let maxDepth = 0;
+        FAMILY_DB.people.forEach(person => {
+            let depth = 0;
+            let current = person;
+            while(current.parents && current.parents.length > 0) {
+                depth++;
+                current = FAMILY_DB.people.find(p => p.id === current.parents[0]);
+                if(!current) break;
+            }
+            maxDepth = Math.max(maxDepth, depth);
+        });
+        document.getElementById('totalGenerations').textContent = maxDepth + 1;
+        
+        // Display names
+        const namesGrid = document.getElementById('namesGrid');
+        namesGrid.innerHTML = FAMILY_DB.people.map(person => `
+            <div class="name-item">
+                <strong>${escapeHtml(person.name)}</strong><br>
+                <small>ID: ${person.id} | ${person.gender}</small>
+            </div>
+        `).join('');
+    }
+
+    function addNewPerson(event) {
+        event.preventDefault();
+        const name = document.getElementById('newName').value.trim();
+        const gender = document.getElementById('newGender').value;
+        const parent1Id = document.getElementById('parent1Id').value.trim();
+        const parent2Id = document.getElementById('parent2Id').value.trim();
+        
+        if (!name) {
+            alert('Please enter a name');
+            return;
+        }
+        
+        const parents = [];
+        if (parent1Id) parents.push(parent1Id);
+        if (parent2Id) parents.push(parent2Id);
+        
+        const newId = 'p' + (FAMILY_DB.people.length + 100);
+        const newPerson = {
+            id: newId,
+            name: name,
+            gender: gender,
+            parents: parents
+        };
+        
+        FAMILY_DB.people.push(newPerson);
+        saveData();
+        
+        document.getElementById('addPersonForm').reset();
+        const successMsg = document.getElementById('successMsg');
+        successMsg.textContent = `✅ ${name} added successfully!`;
+        successMsg.classList.add('show');
+        setTimeout(() => successMsg.classList.remove('show'), 3000);
+        
+        updateAdminPanel();
+    }
+
+    // Session and authentication
+    let currentUser = null;
+    let isAdmin = false;
+
+    function checkAuth() {
+        currentUser = sessionStorage.getItem('currentUser');
+        isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+        
+        if (!currentUser) {
+            window.location.href = 'login.html';
+            return false;
+        }
+        
+        document.getElementById('usernameDisplay').textContent = currentUser;
+        if (isAdmin) {
+            document.getElementById('adminBadge').style.display = 'inline-block';
+            document.getElementById('adminTabBtn').style.display = 'block';
+            updateAdminPanel();
+        }
+        return true;
+    }
+
+    function logout() {
+        sessionStorage.clear();
+        window.location.href = 'login.html';
+    }
+
+    // Initialize
+    if (!checkAuth()) {
+        throw new Error('Auth failed');
+    }
+
+    // Event listeners
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('searchForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const searchValue = document.getElementById('searchName').value;
+        renderLineageTree(searchValue);
+        document.getElementById('searchStatus').innerHTML = `🔍 Showing lineage for "${escapeHtml(searchValue)}"`;
+    });
+    
+    if (isAdmin) {
+        document.getElementById('addPersonForm').addEventListener('submit', addNewPerson);
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabName = btn.dataset.tab;
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+        });
+    });
+</script>
+</body>
+</html>
