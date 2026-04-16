@@ -27,7 +27,6 @@
             overflow: hidden;
         }
 
-        /* Header */
         .main-header {
             background: linear-gradient(135deg, #5a3e2b 0%, #3e2a1c 100%);
             padding: 1.5rem 2rem;
@@ -85,7 +84,6 @@
             background: #a07d52;
         }
 
-        /* Tabs */
         .tabs {
             display: flex;
             gap: 0.5rem;
@@ -124,7 +122,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Search Section */
         .search-section {
             background: #fef7ed;
             border-radius: 1.5rem;
@@ -169,7 +166,6 @@
             cursor: pointer;
         }
 
-        /* Lineage Tree */
         .lineage-container {
             background: #fcf8ef;
             border-radius: 1.5rem;
@@ -229,7 +225,6 @@
             color: #c2a075;
         }
 
-        /* Admin Panel Styles */
         .admin-stats {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 1.5rem;
@@ -377,46 +372,6 @@
             display: block;
         }
 
-        .confirm-dialog {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            animation: fadeIn 0.2s ease;
-        }
-
-        .confirm-dialog-content {
-            background: white;
-            padding: 2rem;
-            border-radius: 1.5rem;
-            max-width: 400px;
-            text-align: center;
-        }
-
-        .confirm-dialog-content button {
-            margin: 0.5rem;
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 0.5rem;
-            cursor: pointer;
-        }
-
-        .confirm-yes {
-            background: #dc3545;
-            color: white;
-        }
-
-        .confirm-no {
-            background: #6c757d;
-            color: white;
-        }
-
         @media (max-width: 768px) {
             .tab-content {
                 padding: 1rem;
@@ -451,7 +406,6 @@
         <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
     </div>
 
-    <!-- View Lineage Tab -->
     <div id="viewTab" class="tab-content active">
         <div class="search-section">
             <form id="searchForm" class="search-form">
@@ -474,7 +428,6 @@
         </div>
     </div>
 
-    <!-- Admin Panel Tab -->
     <div id="adminTab" class="tab-content">
         <div class="admin-stats">
             <div class="stat-card">
@@ -524,9 +477,6 @@
 </div>
 
 <script>
-    // ==============================================================
-    // FAMILY DATABASE (stored in localStorage for persistence)
-    // ==============================================================
     let FAMILY_DB = {
         "people": [
             { "id": "g1", "name": "Eleanor Whitmore", "gender": "female", "parents": [] },
@@ -545,7 +495,6 @@
         ]
     };
 
-    // Load data from localStorage
     function loadData() {
         const saved = localStorage.getItem('family_lineage_db');
         if (saved) {
@@ -560,11 +509,6 @@
     }
 
     loadData();
-
-    // Helper functions
-    function getAllNames() {
-        return FAMILY_DB.people.map(p => p.name);
-    }
 
     function findPersonByPartialName(searchTerm) {
         const term = searchTerm.trim().toLowerCase();
@@ -687,14 +631,11 @@
         });
     }
 
-    // Admin functions
     function updateAdminPanel() {
         if (!isAdmin) return;
         
-        // Update stats
         document.getElementById('totalPeopleCount').textContent = FAMILY_DB.people.length;
         
-        // Calculate generations
         let maxDepth = 0;
         FAMILY_DB.people.forEach(person => {
             let depth = 0;
@@ -708,7 +649,6 @@
         });
         document.getElementById('totalGenerations').textContent = maxDepth + 1;
         
-        // Display names with delete buttons
         const namesGrid = document.getElementById('namesGrid');
         namesGrid.innerHTML = FAMILY_DB.people.map(person => `
             <div class="name-item" data-id="${person.id}">
@@ -721,12 +661,10 @@
         `).join('');
     }
 
-    function deletePerson(personId) {
-        // Show confirmation dialog
+    window.deletePerson = function(personId) {
         const person = FAMILY_DB.people.find(p => p.id === personId);
         if (!person) return;
         
-        // Check if person has children (anyone listing this person as parent)
         const hasChildren = FAMILY_DB.people.some(p => p.parents && p.parents.includes(personId));
         
         let confirmMessage = `Are you sure you want to delete "${person.name}"?`;
@@ -735,10 +673,8 @@
         }
         
         if (confirm(confirmMessage)) {
-            // Remove the person
             FAMILY_DB.people = FAMILY_DB.people.filter(p => p.id !== personId);
             
-            // Remove this person from parents lists of others
             FAMILY_DB.people.forEach(p => {
                 if (p.parents) {
                     p.parents = p.parents.filter(pid => pid !== personId);
@@ -753,13 +689,12 @@
             successMsg.classList.add('show');
             setTimeout(() => successMsg.classList.remove('show'), 3000);
             
-            // Refresh lineage view if it was showing this person
             const currentSearch = document.getElementById('searchName').value;
             if (currentSearch && findPersonByPartialName(currentSearch) === null) {
                 renderLineageTree('');
             }
         }
-    }
+    };
 
     function addNewPerson(event) {
         event.preventDefault();
@@ -773,7 +708,6 @@
             return;
         }
         
-        // Check if name already exists
         if (FAMILY_DB.people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
             const warningMsg = document.getElementById('warningMsg');
             warningMsg.textContent = `⚠️ "${name}" already exists in the database!`;
@@ -786,7 +720,6 @@
         if (parent1Id) parents.push(parent1Id);
         if (parent2Id) parents.push(parent2Id);
         
-        // Generate new ID
         const newId = 'p' + (FAMILY_DB.people.length + 100);
         const newPerson = {
             id: newId,
@@ -807,7 +740,6 @@
         updateAdminPanel();
     }
 
-    // Session and authentication
     let currentUser = null;
     let isAdmin = false;
 
@@ -834,15 +766,10 @@
         window.location.href = 'login.html';
     }
 
-    // Initialize
     if (!checkAuth()) {
         throw new Error('Auth failed');
     }
 
-    // Make deletePerson available globally
-    window.deletePerson = deletePerson;
-
-    // Event listeners
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('searchForm').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -855,7 +782,6 @@
         document.getElementById('addPersonForm').addEventListener('submit', addNewPerson);
     }
 
-    // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const tabName = btn.dataset.tab;

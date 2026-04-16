@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Login | Ancestral Threads</title>
+    <title>Login & Signup | Ancestral Threads</title>
     <style>
         * {
             margin: 0;
@@ -94,6 +94,46 @@
             font-size: 0.9rem;
         }
 
+        /* Tab styles */
+        .auth-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .auth-tab {
+            flex: 1;
+            text-align: center;
+            padding: 0.75rem;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .auth-tab.active {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .auth-form {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .input-group {
             margin-bottom: 1.5rem;
         }
@@ -123,7 +163,22 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
-        .login-btn {
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            user-select: none;
+            color: #667eea;
+            font-size: 1.2rem;
+        }
+
+        .auth-btn {
             width: 100%;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -137,12 +192,12 @@
             margin-top: 0.5rem;
         }
 
-        .login-btn:hover {
+        .auth-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
         }
 
-        .login-btn:active {
+        .auth-btn:active {
             transform: translateY(0);
         }
 
@@ -176,6 +231,22 @@
             animation: shake 0.3s ease;
         }
 
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            text-align: center;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             25% { transform: translateX(-10px); }
@@ -194,19 +265,14 @@
             font-family: monospace;
         }
 
-        .toggle-password {
-            position: absolute;
-            right: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            cursor: pointer;
-            user-select: none;
-            color: #667eea;
+        .password-strength {
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
         }
 
-        .password-wrapper {
-            position: relative;
-        }
+        .strength-weak { color: #dc3545; }
+        .strength-medium { color: #ffc107; }
+        .strength-strong { color: #28a745; }
     </style>
 </head>
 <body>
@@ -217,36 +283,71 @@
                 <p>trace your roots · honor your bloodline</p>
             </div>
 
-            <div class="input-group">
-                <label>👤 Username</label>
-                <input type="text" id="username" placeholder="Enter your username" autocomplete="off">
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-form="login">🔐 Login</button>
+                <button class="auth-tab" data-form="signup">📝 Sign Up</button>
             </div>
 
-            <div class="input-group">
-                <label>🔒 Password</label>
-                <div class="password-wrapper">
-                    <input type="password" id="password" placeholder="Enter your password">
-                    <span class="toggle-password" onclick="togglePassword()">👁️</span>
+            <!-- Login Form -->
+            <div id="loginForm" class="auth-form active">
+                <div class="input-group">
+                    <label>👤 Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter your username" autocomplete="off">
                 </div>
+
+                <div class="input-group">
+                    <label>🔒 Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword" placeholder="Enter your password">
+                        <span class="toggle-password" onclick="togglePassword('loginPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <button class="auth-btn" id="loginBtn">Login 🌿</button>
             </div>
 
-            <button class="login-btn" id="loginBtn">Enter the Grove 🌿</button>
+            <!-- Signup Form -->
+            <div id="signupForm" class="auth-form">
+                <div class="input-group">
+                    <label>👤 Username *</label>
+                    <input type="text" id="signupUsername" placeholder="Choose a username (min 3 characters)" autocomplete="off">
+                </div>
+
+                <div class="input-group">
+                    <label>📧 Email (optional)</label>
+                    <input type="email" id="signupEmail" placeholder="your@email.com">
+                </div>
+
+                <div class="input-group">
+                    <label>🔒 Password *</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="signupPassword" placeholder="Choose a strong password (min 6 characters)">
+                        <span class="toggle-password" onclick="togglePassword('signupPassword')">👁️</span>
+                    </div>
+                    <div id="passwordStrength" class="password-strength"></div>
+                </div>
+
+                <div class="input-group">
+                    <label>✓ Confirm Password *</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="confirmPassword" placeholder="Confirm your password">
+                        <span class="toggle-password" onclick="togglePassword('confirmPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <button class="auth-btn" id="signupBtn">Create Account ✨</button>
+            </div>
 
             <div class="info-message">
-                💡 <strong>Demo Accounts:</strong><br>
-                👑 Admin: username <strong>admin</strong> | password <strong>admin123</strong><br>
-                👤 Regular User: username <strong>user</strong> | password <strong>user123</strong><br>
-                📝 Or register a new account below
+                💡 <strong>Demo Admin Account:</strong><br>
+                Username: <strong>admin</strong> | Password: <strong>admin123</strong>
             </div>
 
-            <div class="info-message" style="margin-top: 0.5rem; background: #e8f5e9; color: #2e7d32;">
-                ✨ <strong>New User?</strong> Just enter any username and password to create an account!
-            </div>
-
-            <div class="error-message" id="errorMessage"></div>
+            <div id="errorMessage" class="error-message"></div>
+            <div id="successMessage" class="success-message"></div>
         </div>
     </div>
-    <div class="admin-badge">🔐 Secure Login</div>
+    <div class="admin-badge">🔐 Secure Authentication</div>
 
     <script>
         // User database stored in localStorage
@@ -257,10 +358,15 @@
             if (saved) {
                 users = JSON.parse(saved);
             } else {
-                // Default users
+                // Default admin user only - regular users must sign up
                 users = [
-                    { username: 'admin', password: 'admin123', isAdmin: true },
-                    { username: 'user', password: 'user123', isAdmin: false }
+                    { 
+                        username: 'admin', 
+                        password: 'admin123', 
+                        email: 'admin@familytree.com',
+                        isAdmin: true,
+                        createdAt: new Date().toISOString()
+                    }
                 ];
                 saveUsers();
             }
@@ -270,39 +376,27 @@
             localStorage.setItem('family_lineage_users', JSON.stringify(users));
         }
 
-        function registerUser(username, password) {
-            // Check if user already exists
-            if (users.find(u => u.username === username)) {
-                return false;
-            }
-            users.push({ username: username, password: password, isAdmin: false });
-            saveUsers();
-            return true;
+        function validatePassword(password) {
+            if (password.length < 6) return { valid: false, message: 'Password must be at least 6 characters' };
+            return { valid: true, message: '' };
         }
 
-        function authenticateUser(username, password) {
-            const user = users.find(u => u.username === username);
-            if (user && user.password === password) {
-                return user;
-            }
-            return null;
+        function checkPasswordStrength(password) {
+            if (!password) return '';
+            let strength = 0;
+            if (password.length >= 6) strength++;
+            if (password.length >= 10) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            
+            if (strength <= 2) return { class: 'strength-weak', text: 'Weak password' };
+            if (strength <= 4) return { class: 'strength-medium', text: 'Medium password' };
+            return { class: 'strength-strong', text: 'Strong password' };
         }
-
-        function togglePassword() {
-            const passwordInput = document.getElementById('password');
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-            } else {
-                passwordInput.type = 'password';
-            }
-        }
-
-        const loginBtn = document.getElementById('loginBtn');
-        const usernameInput = document.getElementById('username');
-        const passwordInput = document.getElementById('password');
-        const errorDiv = document.getElementById('errorMessage');
 
         function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
             errorDiv.textContent = message;
             errorDiv.classList.add('show');
             setTimeout(() => {
@@ -310,12 +404,29 @@
             }, 3000);
         }
 
-        function login() {
-            const username = usernameInput.value.trim();
-            const password = passwordInput.value.trim();
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+            setTimeout(() => {
+                successDiv.classList.remove('show');
+            }, 3000);
+        }
 
+        function signup() {
+            const username = document.getElementById('signupUsername').value.trim();
+            const email = document.getElementById('signupEmail').value.trim();
+            const password = document.getElementById('signupPassword').value;
+            const confirm = document.getElementById('confirmPassword').value;
+
+            // Validation
             if (!username) {
                 showError('❌ Please enter a username');
+                return;
+            }
+
+            if (username.length < 3) {
+                showError('❌ Username must be at least 3 characters');
                 return;
             }
 
@@ -324,42 +435,139 @@
                 return;
             }
 
-            // Try to authenticate
-            let user = authenticateUser(username, password);
-            
-            if (!user) {
-                // User doesn't exist, register new user
-                if (registerUser(username, password)) {
-                    user = authenticateUser(username, password);
-                    showError('✅ Account created! Logging in...');
-                    setTimeout(() => {
-                        sessionStorage.setItem('currentUser', username);
-                        sessionStorage.setItem('isAdmin', 'false');
-                        window.location.href = 'platform.html';
-                    }, 1000);
-                    return;
-                }
+            const passwordValidation = validatePassword(password);
+            if (!passwordValidation.valid) {
+                showError(`❌ ${passwordValidation.message}`);
+                return;
             }
+
+            if (password !== confirm) {
+                showError('❌ Passwords do not match');
+                return;
+            }
+
+            // Check if username already exists
+            if (users.find(u => u.username === username)) {
+                showError('❌ Username already exists. Please choose another one.');
+                return;
+            }
+
+            // Create new user
+            const newUser = {
+                username: username,
+                password: password,
+                email: email || null,
+                isAdmin: false,
+                createdAt: new Date().toISOString()
+            };
+
+            users.push(newUser);
+            saveUsers();
+            
+            showSuccess('✅ Account created successfully! Please login.');
+            
+            // Clear signup form
+            document.getElementById('signupUsername').value = '';
+            document.getElementById('signupEmail').value = '';
+            document.getElementById('signupPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            
+            // Switch to login tab
+            document.querySelector('.auth-tab[data-form="login"]').click();
+        }
+
+        function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+
+            if (!username) {
+                showError('❌ Please enter your username');
+                return;
+            }
+
+            if (!password) {
+                showError('❌ Please enter your password');
+                return;
+            }
+
+            const user = users.find(u => u.username === username && u.password === password);
             
             if (user) {
                 sessionStorage.setItem('currentUser', username);
                 sessionStorage.setItem('isAdmin', user.isAdmin ? 'true' : 'false');
                 window.location.href = 'platform.html';
             } else {
-                showError('❌ Invalid username or password');
+                showError('❌ Invalid username or password. Please sign up if you don\'t have an account.');
             }
         }
 
+        function togglePassword(inputId) {
+            const passwordInput = document.getElementById(inputId);
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+            } else {
+                passwordInput.type = 'password';
+            }
+        }
+
+        // Password strength checker
+        document.getElementById('signupPassword')?.addEventListener('input', function() {
+            const strength = checkPasswordStrength(this.value);
+            const strengthDiv = document.getElementById('passwordStrength');
+            if (this.value) {
+                strengthDiv.innerHTML = `<span class="${strength.class}">🔒 ${strength.text}</span>`;
+            } else {
+                strengthDiv.innerHTML = '';
+            }
+        });
+
+        // Tab switching
+        document.querySelectorAll('.auth-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const formType = tab.dataset.form;
+                
+                // Update active tab
+                document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // Update active form
+                document.getElementById('loginForm').classList.remove('active');
+                document.getElementById('signupForm').classList.remove('active');
+                document.getElementById(`${formType}Form`).classList.add('active');
+                
+                // Clear messages
+                document.getElementById('errorMessage').classList.remove('show');
+                document.getElementById('successMessage').classList.remove('show');
+            });
+        });
+
+        // Event listeners
+        document.getElementById('loginBtn').addEventListener('click', login);
+        document.getElementById('signupBtn').addEventListener('click', signup);
+        
+        // Enter key support
+        document.getElementById('loginUsername').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+        
+        document.getElementById('signupUsername').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') signup();
+        });
+        document.getElementById('signupPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') signup();
+        });
+        document.getElementById('confirmPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') signup();
+        });
+
+        // Initialize
         loadUsers();
-        loginBtn.addEventListener('click', login);
         
-        usernameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') login();
-        });
-        
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') login();
-        });
+        // Make functions global for onclick handlers
+        window.togglePassword = togglePassword;
     </script>
 </body>
 </html>
