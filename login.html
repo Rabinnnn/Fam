@@ -94,7 +94,6 @@
             font-size: 0.9rem;
         }
 
-        /* Tab styles */
         .auth-tabs {
             display: flex;
             gap: 1rem;
@@ -288,7 +287,6 @@
                 <button class="auth-tab" data-form="signup">📝 Sign Up</button>
             </div>
 
-            <!-- Login Form -->
             <div id="loginForm" class="auth-form active">
                 <div class="input-group">
                     <label>👤 Username</label>
@@ -306,7 +304,6 @@
                 <button class="auth-btn" id="loginBtn">Login 🌿</button>
             </div>
 
-            <!-- Signup Form -->
             <div id="signupForm" class="auth-form">
                 <div class="input-group">
                     <label>👤 Username *</label>
@@ -350,7 +347,6 @@
     <div class="admin-badge">🔐 Secure Authentication</div>
 
     <script>
-        // User database stored in localStorage
         let users = [];
 
         function loadUsers() {
@@ -358,7 +354,6 @@
             if (saved) {
                 users = JSON.parse(saved);
             } else {
-                // Default admin user only - regular users must sign up
                 users = [
                     { 
                         username: 'admin', 
@@ -419,7 +414,6 @@
             const password = document.getElementById('signupPassword').value;
             const confirm = document.getElementById('confirmPassword').value;
 
-            // Validation
             if (!username) {
                 showError('❌ Please enter a username');
                 return;
@@ -446,13 +440,11 @@
                 return;
             }
 
-            // Check if username already exists
             if (users.find(u => u.username === username)) {
                 showError('❌ Username already exists. Please choose another one.');
                 return;
             }
 
-            // Create new user
             const newUser = {
                 username: username,
                 password: password,
@@ -466,13 +458,11 @@
             
             showSuccess('✅ Account created successfully! Please login.');
             
-            // Clear signup form
             document.getElementById('signupUsername').value = '';
             document.getElementById('signupEmail').value = '';
             document.getElementById('signupPassword').value = '';
             document.getElementById('confirmPassword').value = '';
             
-            // Switch to login tab
             document.querySelector('.auth-tab[data-form="login"]').click();
         }
 
@@ -510,7 +500,6 @@
             }
         }
 
-        // Password strength checker
         document.getElementById('signupPassword')?.addEventListener('input', function() {
             const strength = checkPasswordStrength(this.value);
             const strengthDiv = document.getElementById('passwordStrength');
@@ -521,31 +510,25 @@
             }
         });
 
-        // Tab switching
         document.querySelectorAll('.auth-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 const formType = tab.dataset.form;
                 
-                // Update active tab
                 document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 
-                // Update active form
                 document.getElementById('loginForm').classList.remove('active');
                 document.getElementById('signupForm').classList.remove('active');
                 document.getElementById(`${formType}Form`).classList.add('active');
                 
-                // Clear messages
                 document.getElementById('errorMessage').classList.remove('show');
                 document.getElementById('successMessage').classList.remove('show');
             });
         });
 
-        // Event listeners
         document.getElementById('loginBtn').addEventListener('click', login);
         document.getElementById('signupBtn').addEventListener('click', signup);
         
-        // Enter key support
         document.getElementById('loginUsername').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') login();
         });
@@ -563,10 +546,7 @@
             if (e.key === 'Enter') signup();
         });
 
-        // Initialize
         loadUsers();
-        
-        // Make functions global for onclick handlers
         window.togglePassword = togglePassword;
     </script>
 </body>
