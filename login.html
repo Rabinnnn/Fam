@@ -263,15 +263,6 @@
             font-size: 0.7rem;
             font-family: monospace;
         }
-
-        .password-strength {
-            margin-top: 0.5rem;
-            font-size: 0.75rem;
-        }
-
-        .strength-weak { color: #dc3545; }
-        .strength-medium { color: #ffc107; }
-        .strength-strong { color: #28a745; }
     </style>
 </head>
 <body>
@@ -318,10 +309,9 @@
                 <div class="input-group">
                     <label>🔒 Password *</label>
                     <div class="password-wrapper">
-                        <input type="password" id="signupPassword" placeholder="Choose a strong password (min 6 characters)">
+                        <input type="password" id="signupPassword" placeholder="Choose a password (min 6 characters)">
                         <span class="toggle-password" onclick="togglePassword('signupPassword')">👁️</span>
                     </div>
-                    <div id="passwordStrength" class="password-strength"></div>
                 </div>
 
                 <div class="input-group">
@@ -374,20 +364,6 @@
         function validatePassword(password) {
             if (password.length < 6) return { valid: false, message: 'Password must be at least 6 characters' };
             return { valid: true, message: '' };
-        }
-
-        function checkPasswordStrength(password) {
-            if (!password) return '';
-            let strength = 0;
-            if (password.length >= 6) strength++;
-            if (password.length >= 10) strength++;
-            if (/[A-Z]/.test(password)) strength++;
-            if (/[0-9]/.test(password)) strength++;
-            if (/[^A-Za-z0-9]/.test(password)) strength++;
-            
-            if (strength <= 2) return { class: 'strength-weak', text: 'Weak password' };
-            if (strength <= 4) return { class: 'strength-medium', text: 'Medium password' };
-            return { class: 'strength-strong', text: 'Strong password' };
         }
 
         function showError(message) {
@@ -499,16 +475,6 @@
                 passwordInput.type = 'password';
             }
         }
-
-        document.getElementById('signupPassword')?.addEventListener('input', function() {
-            const strength = checkPasswordStrength(this.value);
-            const strengthDiv = document.getElementById('passwordStrength');
-            if (this.value) {
-                strengthDiv.innerHTML = `<span class="${strength.class}">🔒 ${strength.text}</span>`;
-            } else {
-                strengthDiv.innerHTML = '';
-            }
-        });
 
         document.querySelectorAll('.auth-tab').forEach(tab => {
             tab.addEventListener('click', () => {
