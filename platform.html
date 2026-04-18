@@ -80,10 +80,6 @@
             transition: 0.2s;
         }
 
-        .logout-btn:hover {
-            background: #a07d52;
-        }
-
         .tabs {
             display: flex;
             gap: 0.5rem;
@@ -99,7 +95,6 @@
             border-radius: 1rem 1rem 0 0;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
         }
 
         .tab-btn.active {
@@ -140,7 +135,6 @@
         .search-form div {
             flex: 2;
             min-width: 200px;
-            position: relative;
         }
 
         .search-form label {
@@ -156,13 +150,6 @@
             border: 2px solid #e0cfb6;
             border-radius: 1rem;
             background: white;
-            transition: all 0.3s;
-        }
-
-        .search-form input:focus {
-            outline: none;
-            border-color: #c2894b;
-            box-shadow: 0 0 0 3px rgba(194, 137, 75, 0.1);
         }
 
         .search-form button {
@@ -172,13 +159,6 @@
             border: none;
             border-radius: 1rem;
             cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .search-form button:hover {
-            background: #6f451f;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
 
         .lineage-container {
@@ -195,18 +175,6 @@
             margin-bottom: 1rem;
             border-left: 6px solid #c2894b;
             padding-left: 1rem;
-            animation: slideInLeft 0.5s ease;
-        }
-
-        @keyframes slideInLeft {
-            from {
-                opacity: 0;
-                transform: translateX(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
         }
 
         .family-tree {
@@ -228,29 +196,10 @@
             min-width: 140px;
             transition: all 0.3s ease;
             cursor: pointer;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .tree-node::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: left 0.5s;
         }
 
         .tree-node:hover {
             transform: translateY(-5px) scale(1.02);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-            background: linear-gradient(145deg, #fff0e0, #ffe8d4);
-        }
-
-        .tree-node:hover::before {
-            left: 100%;
         }
 
         .generation {
@@ -259,18 +208,6 @@
             justify-content: center;
             gap: 1.5rem;
             margin: 1rem 0;
-            animation: fadeInUp 0.6s ease-out;
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
         }
 
         .gen-label {
@@ -281,62 +218,14 @@
             text-align: center;
             width: 100%;
             margin-top: 1rem;
-            letter-spacing: 2px;
-            animation: fadeIn 0.5s ease;
         }
 
         .connector-line {
             text-align: center;
             font-size: 1.4rem;
             color: #c2a075;
-            animation: bounce 1s ease infinite;
         }
 
-        @keyframes bounce {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(5px);
-            }
-        }
-
-        /* Loading animation */
-        .loading {
-            display: inline-block;
-            width: 50px;
-            height: 50px;
-            border: 3px solid #e2cfb0;
-            border-radius: 50%;
-            border-top-color: #c2894b;
-            animation: spin 1s ease-in-out infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Pulse animation for new nodes */
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-                box-shadow: 0 0 0 0 rgba(194, 137, 75, 0.4);
-            }
-            70% {
-                transform: scale(1.05);
-                box-shadow: 0 0 0 10px rgba(194, 137, 75, 0);
-            }
-            100% {
-                transform: scale(1);
-                box-shadow: 0 0 0 0 rgba(194, 137, 75, 0);
-            }
-        }
-
-        .tree-node-new {
-            animation: pulse 0.6s ease-out;
-        }
-
-        /* Admin Panel Styles */
         .admin-stats {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 1.5rem;
@@ -344,8 +233,6 @@
             color: white;
             margin-bottom: 2rem;
             display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
             gap: 1rem;
         }
 
@@ -355,30 +242,11 @@
             border-radius: 1rem;
             text-align: center;
             flex: 1;
-            transition: transform 0.3s;
-            cursor: pointer;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            background: rgba(255,255,255,0.3);
         }
 
         .stat-number {
             font-size: 2rem;
             font-weight: bold;
-            animation: countUp 0.5s ease-out;
-        }
-
-        @keyframes countUp {
-            from {
-                opacity: 0;
-                transform: scale(0.5);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
         }
 
         .names-list {
@@ -401,42 +269,9 @@
             background: #f5ede1;
             padding: 0.75rem 1rem;
             border-radius: 0.75rem;
-            font-size: 0.9rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: all 0.3s;
-            animation: slideInRight 0.3s ease;
-        }
-
-        @keyframes slideInRight {
-            from {
-                opacity: 0;
-                transform: translateX(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        .name-item:hover {
-            background: #ede0cf;
-            transform: translateX(-5px);
-        }
-
-        .name-info {
-            flex: 1;
-        }
-
-        .name-info strong {
-            display: block;
-            color: #5a3e2b;
-        }
-
-        .name-info small {
-            font-size: 0.7rem;
-            color: #8b6946;
         }
 
         .delete-btn {
@@ -446,13 +281,6 @@
             border: none;
             border-radius: 0.5rem;
             cursor: pointer;
-            font-size: 0.7rem;
-            transition: all 0.3s;
-        }
-
-        .delete-btn:hover {
-            background: #c82333;
-            transform: scale(1.05);
         }
 
         .admin-form {
@@ -477,13 +305,6 @@
             padding: 0.7rem;
             border: 2px solid #e0cfb6;
             border-radius: 0.8rem;
-            transition: all 0.3s;
-        }
-
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: #c2894b;
-            box-shadow: 0 0 0 3px rgba(194, 137, 75, 0.1);
         }
 
         .submit-btn {
@@ -493,61 +314,47 @@
             border: none;
             border-radius: 1rem;
             cursor: pointer;
-            transition: all 0.3s;
         }
 
-        .submit-btn:hover {
-            background: #3e2a1c;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        .success-msg, .error-msg {
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .success-msg.show, .error-msg.show {
+            display: block;
         }
 
         .success-msg {
             background: #d4edda;
             color: #155724;
-            padding: 0.75rem;
-            border-radius: 0.75rem;
-            margin-top: 1rem;
-            display: none;
-            animation: slideInRight 0.3s ease;
         }
 
-        .success-msg.show {
-            display: block;
+        .error-msg {
+            background: #f8d7da;
+            color: #721c24;
         }
 
-        .warning-msg {
-            background: #fff3cd;
-            color: #856404;
-            padding: 0.75rem;
-            border-radius: 0.75rem;
-            margin-top: 1rem;
-            display: none;
-            animation: shake 0.3s ease;
+        .loading {
+            text-align: center;
+            padding: 2rem;
         }
 
-        .warning-msg.show {
-            display: block;
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #c2894b;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
         }
 
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
-        }
-
-        @media (max-width: 768px) {
-            .tab-content {
-                padding: 1rem;
-            }
-            .generation {
-                gap: 0.8rem;
-            }
-            .name-item {
-                flex-direction: column;
-                gap: 0.5rem;
-                text-align: center;
-            }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -556,7 +363,7 @@
     <div class="main-header">
         <div class="logo">
             <h1>📜 Ancestral Threads</h1>
-            <span>family lineage visualizer</span>
+            <span>family lineage visualizer (Supabase - Working!)</span>
         </div>
         <div class="user-info">
             <span>👋 <span id="usernameDisplay"></span></span>
@@ -574,8 +381,8 @@
         <div class="search-section">
             <form id="searchForm" class="search-form">
                 <div>
-                    <label>👤 Search</label>
-                    <input type="text" id="searchName" placeholder="Enter your name..." autocomplete="off">
+                    <label>👤 Search Family Member</label>
+                    <input type="text" id="searchName" placeholder="e.g., Emma, Lucas, Sophia...">
                 </div>
                 <button type="submit">🌿 Reveal Lineage</button>
             </form>
@@ -585,8 +392,9 @@
         <div class="lineage-container">
             <div class="tree-title" id="treeTitle">✨ Lineage Tree</div>
             <div id="visualTreeContainer">
-                <div style="text-align: center; padding: 3rem; color: #9e7b58;">
-                    🔍 Enter a name above to see the family roots.
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading from Supabase...</p>
                 </div>
             </div>
         </div>
@@ -606,7 +414,7 @@
 
         <div class="names-list">
             <h3>📋 All Family Names</h3>
-            <div id="namesGrid" class="names-grid"></div>
+            <div id="namesGrid"></div>
         </div>
 
         <div class="admin-form">
@@ -632,63 +440,145 @@
                     <label>Parent 2 ID (optional)</label>
                     <input type="text" id="parent2Id" placeholder="Enter parent ID">
                 </div>
-                <button type="submit" class="submit-btn">➕ Add Person</button>
+                <button type="submit" id="submitPersonBtn" class="submit-btn">➕ Add Person</button>
             </form>
             <div id="successMsg" class="success-msg"></div>
-            <div id="warningMsg" class="warning-msg"></div>
+            <div id="errorMsg" class="error-msg"></div>
         </div>
     </div>
 </div>
 
 <script>
-    let FAMILY_DB = {
-        "people": [
-            { "id": "g1", "name": "Eleanor Whitmore", "gender": "female", "parents": [] },
-            { "id": "g2", "name": "Harold Whitmore", "gender": "male", "parents": [] },
-            { "id": "g3", "name": "Beatrice Clarke", "gender": "female", "parents": [] },
-            { "id": "g4", "name": "Reginald Clarke", "gender": "male", "parents": [] },
-            { "id": "p1", "name": "Margaret Whitmore", "gender": "female", "parents": ["g1", "g2"] },
-            { "id": "p2", "name": "Thomas Whitmore", "gender": "male", "parents": ["g1", "g2"] },
-            { "id": "p3", "name": "Eleanor Clarke", "gender": "female", "parents": ["g3", "g4"] },
-            { "id": "p4", "name": "Arthur Clarke", "gender": "male", "parents": ["g3", "g4"] },
-            { "id": "c1", "name": "Emma Whitmore-Clarke", "gender": "female", "parents": ["p1", "p3"] },
-            { "id": "c2", "name": "Lucas Whitmore", "gender": "male", "parents": ["p2", "p3"] },
-            { "id": "c3", "name": "Sophia Whitmore", "gender": "female", "parents": ["p1", "p4"] },
-            { "id": "c4", "name": "Mike Stevens", "gender": "male", "parents": ["p4", "p3"] },
-            { "id": "c5", "name": "Isabella Whitmore", "gender": "female", "parents": ["p2", "p1"] }
-        ]
-    };
+    // ==============================================================
+    // YOUR SUPABASE CONFIGURATION (WORKING!)
+    // ==============================================================
+    const SUPABASE_URL = 'https://snkcdsfzxjruxhwxnoxh.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_-IHen1e8xLiVH9_mJBpKmA_0GQSRFJx';
 
-    function loadData() {
-        const saved = localStorage.getItem('family_lineage_db');
-        if (saved) {
-            FAMILY_DB = JSON.parse(saved);
-        } else {
-            saveData();
+    let currentUser = null;
+    let isAdmin = false;
+    let FAMILY_DB = { people: [] };
+
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMsg');
+        errorDiv.textContent = `❌ ${message}`;
+        errorDiv.classList.add('show');
+        setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        console.error('ERROR:', message);
+    }
+
+    function showSuccess(message) {
+        const successDiv = document.getElementById('successMsg');
+        successDiv.textContent = `✅ ${message}`;
+        successDiv.classList.add('show');
+        setTimeout(() => successDiv.classList.remove('show'), 3000);
+    }
+
+    // Load all people from Supabase
+    async function loadPeople() {
+        try {
+            console.log('📥 Loading people from Supabase...');
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/people?select=*`, {
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            FAMILY_DB.people = data;
+            console.log(`✅ Loaded ${data.length} people`);
+            return data;
+        } catch (error) {
+            console.error('❌ Load error:', error);
+            showError(`Failed to load: ${error.message}`);
+            throw error;
         }
     }
 
-    function saveData() {
-        localStorage.setItem('family_lineage_db', JSON.stringify(FAMILY_DB));
+    // Add a new person to Supabase
+    async function addPersonToDB(person) {
+        try {
+            console.log('📤 Adding person to Supabase:', person);
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/people`, {
+                method: 'POST',
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify(person)
+            });
+            
+            console.log('📊 Response status:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+            
+            console.log('✅ Person added successfully!');
+            return true;
+        } catch (error) {
+            console.error('❌ Add error:', error);
+            showError(`Failed to add: ${error.message}`);
+            throw error;
+        }
     }
 
-    loadData();
+    // Delete a person from Supabase
+    async function deletePersonFromDB(personId) {
+        try {
+            console.log('🗑️ Deleting person:', personId);
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
+                method: 'DELETE',
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            });
+            
+            console.log('📊 Delete response status:', response.status);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            console.log('✅ Person deleted successfully!');
+            return true;
+        } catch (error) {
+            console.error('❌ Delete error:', error);
+            showError(`Failed to delete: ${error.message}`);
+            throw error;
+        }
+    }
 
+    // Find person by name (partial match)
     function findPersonByPartialName(searchTerm) {
         const term = searchTerm.trim().toLowerCase();
         if (term === "") return null;
+        
         let exactMatch = FAMILY_DB.people.find(p => p.name.toLowerCase() === term);
         if (exactMatch) return exactMatch;
+        
         let partialMatches = FAMILY_DB.people.filter(p => p.name.toLowerCase().includes(term));
         return partialMatches.length > 0 ? partialMatches[0] : null;
     }
 
+    // Get all ancestors of a person
     function getAncestors(person, visited = new Set()) {
         if (!person || visited.has(person.id)) return [];
         visited.add(person.id);
         let ancestors = [person];
+        
         if (person.parents && person.parents.length) {
-            for (let parentId of person.parents) {
+            let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            for (let parentId of parentsArray) {
                 const parentObj = FAMILY_DB.people.find(p => p.id === parentId);
                 if (parentObj) {
                     ancestors = ancestors.concat(getAncestors(parentObj, visited));
@@ -698,16 +588,19 @@
         return ancestors;
     }
 
+    // Build generation levels
     function buildGenerations(ancestors) {
         if (!ancestors.length) return [];
+        
         const depthMap = new Map();
         const targetId = ancestors[0].id;
         
         function computeDepth(person, currentDepth) {
             if (!person) return;
             depthMap.set(person.id, currentDepth);
-            if (person.parents) {
-                for (let pid of person.parents) {
+            if (person.parents && person.parents.length) {
+                let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+                for (let pid of parentsArray) {
                     const par = FAMILY_DB.people.find(p => p.id === pid);
                     if (par && !depthMap.has(par.id)) {
                         computeDepth(par, currentDepth + 1);
@@ -736,7 +629,8 @@
         return result;
     }
 
-    function renderLineageTree(searchTerm, isNewAddition = false) {
+    // Render the family tree
+    function renderLineageTree(searchTerm) {
         const container = document.getElementById("visualTreeContainer");
         const titleSpan = document.getElementById("treeTitle");
         
@@ -774,9 +668,7 @@
             html += `<div class="gen-label">${labelText}</div>`;
             html += `<div class="generation">`;
             for (let member of level) {
-                const isNew = isNewAddition && member.name === person.name;
-                const animationClass = isNew ? 'tree-node-new' : '';
-                html += `<div class="tree-node ${animationClass}"><strong>${escapeHtml(member.name)}</strong></div>`;
+                html += `<div class="tree-node"><strong>${escapeHtml(member.name)}</strong></div>`;
             }
             html += `</div>`;
             if (idx < reversed.length - 1 && level.length > 0) {
@@ -797,98 +689,77 @@
         });
     }
 
-    function updateAdminPanel() {
+    // Update admin panel with latest data
+    async function updateAdminPanel() {
         if (!isAdmin) return;
         
-        const totalPeople = FAMILY_DB.people.length;
-        const totalCountElem = document.getElementById('totalPeopleCount');
-        totalCountElem.style.animation = 'none';
-        totalCountElem.offsetHeight;
-        totalCountElem.style.animation = 'countUp 0.5s ease-out';
-        totalCountElem.textContent = totalPeople;
+        await loadPeople();
+        
+        document.getElementById('totalPeopleCount').textContent = FAMILY_DB.people.length;
         
         let maxDepth = 0;
         FAMILY_DB.people.forEach(person => {
             let depth = 0;
             let current = person;
-            while(current.parents && current.parents.length > 0) {
+            let parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
+            while(parents && parents.length > 0) {
                 depth++;
-                current = FAMILY_DB.people.find(p => p.id === current.parents[0]);
+                current = FAMILY_DB.people.find(p => p.id === parents[0]);
                 if(!current) break;
+                parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
             }
             maxDepth = Math.max(maxDepth, depth);
         });
-        
-        const genCountElem = document.getElementById('totalGenerations');
-        genCountElem.style.animation = 'none';
-        genCountElem.offsetHeight;
-        genCountElem.style.animation = 'countUp 0.5s ease-out';
-        genCountElem.textContent = maxDepth + 1;
+        document.getElementById('totalGenerations').textContent = maxDepth + 1;
         
         const namesGrid = document.getElementById('namesGrid');
         namesGrid.innerHTML = FAMILY_DB.people.map(person => `
-            <div class="name-item" data-id="${person.id}">
-                <div class="name-info">
+            <div class="name-item">
+                <div>
                     <strong>${escapeHtml(person.name)}</strong>
-                    <small>ID: ${person.id} | ${person.gender}</small>
+                    <br><small>ID: ${person.id} | ${person.gender}</small>
                 </div>
-                <button class="delete-btn" onclick="deletePerson('${person.id}')">🗑️ Delete</button>
+                <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
             </div>
         `).join('');
     }
 
-    window.deletePerson = function(personId) {
+    // Delete person handler (global for onclick)
+    window.deletePersonHandler = async function(personId) {
         const person = FAMILY_DB.people.find(p => p.id === personId);
         if (!person) return;
         
-        const hasChildren = FAMILY_DB.people.some(p => p.parents && p.parents.includes(personId));
-        
-        let confirmMessage = `Are you sure you want to delete "${person.name}"?`;
-        if (hasChildren) {
-            confirmMessage += `\n\n⚠️ WARNING: This person has children in the database. Deleting them may break family relationships!`;
-        }
-        
-        if (confirm(confirmMessage)) {
-            FAMILY_DB.people = FAMILY_DB.people.filter(p => p.id !== personId);
-            
-            FAMILY_DB.people.forEach(p => {
-                if (p.parents) {
-                    p.parents = p.parents.filter(pid => pid !== personId);
-                }
-            });
-            
-            saveData();
-            updateAdminPanel();
-            
-            const successMsg = document.getElementById('successMsg');
-            successMsg.textContent = `✅ "${person.name}" has been deleted successfully!`;
-            successMsg.classList.add('show');
-            setTimeout(() => successMsg.classList.remove('show'), 3000);
-            
-            const currentSearch = document.getElementById('searchName').value;
-            if (currentSearch && findPersonByPartialName(currentSearch) === null) {
-                renderLineageTree('');
+        if (confirm(`Are you sure you want to delete "${person.name}"?`)) {
+            try {
+                await deletePersonFromDB(personId);
+                await updateAdminPanel();
+                showSuccess(`"${person.name}" deleted successfully!`);
+            } catch (error) {
+                // Error already shown
             }
         }
     };
 
-    function addNewPerson(event) {
+    // Add new person from form
+    async function addNewPerson(event) {
         event.preventDefault();
+        console.log('🎯 Add person form submitted!');
+        
         const name = document.getElementById('newName').value.trim();
         const gender = document.getElementById('newGender').value;
         const parent1Id = document.getElementById('parent1Id').value.trim();
         const parent2Id = document.getElementById('parent2Id').value.trim();
         
+        console.log('Form values:', { name, gender, parent1Id, parent2Id });
+        
         if (!name) {
-            alert('Please enter a name');
+            showError('Please enter a name');
             return;
         }
         
+        // Check if name already exists
         if (FAMILY_DB.people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
-            const warningMsg = document.getElementById('warningMsg');
-            warningMsg.textContent = `⚠️ "${name}" already exists in the database!`;
-            warningMsg.classList.add('show');
-            setTimeout(() => warningMsg.classList.remove('show'), 3000);
+            showError(`"${name}" already exists!`);
             return;
         }
         
@@ -896,37 +767,36 @@
         if (parent1Id) parents.push(parent1Id);
         if (parent2Id) parents.push(parent2Id);
         
-        const newId = 'p' + (FAMILY_DB.people.length + 100);
         const newPerson = {
-            id: newId,
+            id: name.toLowerCase().replace(/\s/g, '_') + '_' + Date.now(),
             name: name,
             gender: gender,
-            parents: parents
+            parents: JSON.stringify(parents)
         };
         
-        FAMILY_DB.people.push(newPerson);
-        saveData();
+        console.log('📦 New person object:', newPerson);
         
-        document.getElementById('addPersonForm').reset();
-        const successMsg = document.getElementById('successMsg');
-        successMsg.textContent = `✅ "${name}" added successfully! (ID: ${newId})`;
-        successMsg.classList.add('show');
-        setTimeout(() => successMsg.classList.remove('show'), 3000);
-        
-        updateAdminPanel();
-        
-        const currentSearch = document.getElementById('searchName').value;
-        if (currentSearch && currentSearch.toLowerCase() === name.toLowerCase()) {
-            renderLineageTree(name, true);
+        try {
+            await addPersonToDB(newPerson);
+            await updateAdminPanel(); // This reloads the data
+            
+            // Clear form
+            document.getElementById('addPersonForm').reset();
+            showSuccess(`"${name}" added successfully!`);
+            
+            console.log('🎉 Person added and UI updated!');
+        } catch (error) {
+            console.error('💥 Error in addNewPerson:', error);
+            // Error already shown in addPersonToDB
         }
     }
 
-    let currentUser = null;
-    let isAdmin = false;
-
+    // Auth check
     function checkAuth() {
         currentUser = sessionStorage.getItem('currentUser');
         isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+        
+        console.log('Auth check:', { currentUser, isAdmin });
         
         if (!currentUser) {
             window.location.href = 'login.html';
@@ -937,7 +807,6 @@
         if (isAdmin) {
             document.getElementById('adminBadge').style.display = 'inline-block';
             document.getElementById('adminTabBtn').style.display = 'block';
-            updateAdminPanel();
         }
         return true;
     }
@@ -947,38 +816,66 @@
         window.location.href = 'login.html';
     }
 
-    if (!checkAuth()) {
-        throw new Error('Auth failed');
+    // Initialize the app
+    async function init() {
+        console.log('🚀 Initializing app...');
+        
+        if (!checkAuth()) return;
+        
+        try {
+            await loadPeople();
+            
+            if (isAdmin) {
+                await updateAdminPanel();
+                console.log('👑 Admin panel ready');
+            }
+            
+            document.getElementById('visualTreeContainer').innerHTML = '<div style="text-align:center;padding:3rem;">🔍 Enter a name above to see the family roots.</div>';
+            console.log('✅ App initialized successfully with', FAMILY_DB.people.length, 'people');
+        } catch (error) {
+            console.error('❌ Init error:', error);
+            document.getElementById('visualTreeContainer').innerHTML = `
+                <div style="text-align:center;padding:3rem;color:#c33;">
+                    ❌ Failed to load data: ${error.message}
+                </div>
+            `;
+        }
     }
 
-    document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('searchForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const searchValue = document.getElementById('searchName').value;
-        renderLineageTree(searchValue, false);
-        document.getElementById('searchStatus').innerHTML = `🔍 Showing lineage for "${escapeHtml(searchValue)}"`;
-        setTimeout(() => {
-            document.getElementById('searchStatus').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('searchStatus').innerHTML = '';
-                document.getElementById('searchStatus').style.opacity = '1';
-            }, 1000);
-        }, 3000);
-    });
-    
-    if (isAdmin) {
-        document.getElementById('addPersonForm').addEventListener('submit', addNewPerson);
-    }
-
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabName = btn.dataset.tab;
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(`${tabName}Tab`).classList.add('active');
+    // Set up event listeners
+    function setupEventListeners() {
+        console.log('🔧 Setting up event listeners...');
+        
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+        
+        document.getElementById('searchForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const searchValue = document.getElementById('searchName').value;
+            renderLineageTree(searchValue);
         });
-    });
+        
+        const addForm = document.getElementById('addPersonForm');
+        if (addForm) {
+            console.log('✅ Found addPersonForm, attaching submit listener');
+            addForm.addEventListener('submit', addNewPerson);
+        } else {
+            console.error('❌ Could not find addPersonForm!');
+        }
+        
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.dataset.tab;
+                document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(`${tabName}Tab`).classList.add('active');
+            });
+        });
+    }
+
+    // Start the app
+    setupEventListeners();
+    init();
 </script>
 </body>
 </html>
