@@ -307,6 +307,55 @@
             border-radius: 0.8rem;
         }
 
+        .add-type-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding: 0.5rem;
+            background: #f5ede1;
+            border-radius: 1rem;
+        }
+        
+        .type-option {
+            flex: 1;
+            text-align: center;
+            padding: 0.75rem;
+            cursor: pointer;
+            border-radius: 0.75rem;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .type-option:hover {
+            background: #e8d9c8;
+        }
+        
+        .type-option.active {
+            background: #c2894b;
+            color: white;
+        }
+        
+        .parents-section {
+            transition: all 0.3s;
+        }
+        
+        .parents-section.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+            background: #f9f9f9;
+            padding: 0.5rem;
+            border-radius: 0.8rem;
+        }
+        
+        .info-note {
+            background: #e8f4f8;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            color: #0c5460;
+        }
+
         .submit-btn {
             background: #5a3e2b;
             color: white;
@@ -363,7 +412,7 @@
     <div class="main-header">
         <div class="logo">
             <h1>📜 Ancestral Threads</h1>
-            <span>family lineage visualizer (Supabase - Working!)</span>
+            <span>family lineage visualizer </span>
         </div>
         <div class="user-info">
             <span>👋 <span id="usernameDisplay"></span></span>
@@ -419,6 +468,16 @@
 
         <div class="admin-form">
             <h3>➕ Add New Family Member</h3>
+            
+            <div class="add-type-selector">
+                <div class="type-option active" data-type="child">
+                    👶 Add Child/Descendant
+                </div>
+                <div class="type-option" data-type="root">
+                    🌳 Add Root Ancestor
+                </div>
+            </div>
+            
             <form id="addPersonForm">
                 <div class="form-group">
                     <label>Full Name *</label>
@@ -432,14 +491,21 @@
                         <option value="other">Other</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Parent 1 ID (optional)</label>
-                    <input type="text" id="parent1Id" placeholder="Enter parent ID (e.g., p1, g1)">
+                
+                <div id="parentsSection" class="parents-section">
+                    <div class="form-group">
+                        <label>Parent 1 Name (optional)</label>
+                        <input type="text" id="parent1Name" placeholder="Enter parent's full name (e.g., John Doe)">
+                    </div>
+                    <div class="form-group">
+                        <label>Parent 2 Name (optional)</label>
+                        <input type="text" id="parent2Name" placeholder="Enter parent's full name">
+                    </div>
+                    <div class="info-note">
+                        💡 Tip: Leave both parent fields empty if this person has no parents in the system yet
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Parent 2 ID (optional)</label>
-                    <input type="text" id="parent2Id" placeholder="Enter parent ID">
-                </div>
+                
                 <button type="submit" id="submitPersonBtn" class="submit-btn">➕ Add Person</button>
             </form>
             <div id="successMsg" class="success-msg"></div>
@@ -450,7 +516,7 @@
 
 <script>
     // ==============================================================
-    // YOUR SUPABASE CONFIGURATION (WORKING!)
+    // YOUR SUPABASE CONFIGURATION
     // ==============================================================
     const SUPABASE_URL = 'https://snkcdsfzxjruxhwxnoxh.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_-IHen1e8xLiVH9_mJBpKmA_0GQSRFJx';
@@ -458,6 +524,7 @@
     let currentUser = null;
     let isAdmin = false;
     let FAMILY_DB = { people: [] };
+    let addType = 'child';
 
     function showError(message) {
         const errorDiv = document.getElementById('errorMsg');
@@ -472,6 +539,11 @@
         successDiv.textContent = `✅ ${message}`;
         successDiv.classList.add('show');
         setTimeout(() => successDiv.classList.remove('show'), 3000);
+    }
+
+    // Helper function to clean name for ID (remove spaces, special chars)
+    function nameToId(name) {
+        return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     }
 
     // Load all people from Supabase
@@ -717,19 +789,19 @@
             <div class="name-item">
                 <div>
                     <strong>${escapeHtml(person.name)}</strong>
-                    <br><small>ID: ${person.id} | ${person.gender}</small>
+                    <br><small>ID: ${person.id}</small>
                 </div>
                 <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
             </div>
         `).join('');
     }
 
-    // Delete person handler (global for onclick)
+    // Delete person handler
     window.deletePersonHandler = async function(personId) {
         const person = FAMILY_DB.people.find(p => p.id === personId);
         if (!person) return;
         
-        if (confirm(`Are you sure you want to delete "${person.name}"?`)) {
+        if (confirm(`Are you sure you want to delete "${person.name}"? This may affect family relationships.`)) {
             try {
                 await deletePersonFromDB(personId);
                 await updateAdminPanel();
@@ -740,6 +812,29 @@
         }
     };
 
+    // Setup add type selector
+    function setupAddTypeSelector() {
+        const options = document.querySelectorAll('.type-option');
+        const parentsSection = document.getElementById('parentsSection');
+        
+        options.forEach(option => {
+            option.addEventListener('click', () => {
+                options.forEach(opt => opt.classList.remove('active'));
+                option.classList.add('active');
+                addType = option.dataset.type;
+                console.log('Add type changed to:', addType);
+                
+                if (addType === 'root') {
+                    parentsSection.classList.add('disabled');
+                    document.getElementById('parent1Name').value = '';
+                    document.getElementById('parent2Name').value = '';
+                } else {
+                    parentsSection.classList.remove('disabled');
+                }
+            });
+        });
+    }
+
     // Add new person from form
     async function addNewPerson(event) {
         event.preventDefault();
@@ -747,10 +842,6 @@
         
         const name = document.getElementById('newName').value.trim();
         const gender = document.getElementById('newGender').value;
-        const parent1Id = document.getElementById('parent1Id').value.trim();
-        const parent2Id = document.getElementById('parent2Id').value.trim();
-        
-        console.log('Form values:', { name, gender, parent1Id, parent2Id });
         
         if (!name) {
             showError('Please enter a name');
@@ -758,36 +849,80 @@
         }
         
         // Check if name already exists
-        if (FAMILY_DB.people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
-            showError(`"${name}" already exists!`);
+        const existingPerson = FAMILY_DB.people.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (existingPerson) {
+            showError(`"${name}" already exists! Please use a different name or add a suffix.`);
             return;
         }
         
-        const parents = [];
-        if (parent1Id) parents.push(parent1Id);
-        if (parent2Id) parents.push(parent2Id);
+        let parentIds = [];
+        
+        if (addType === 'child') {
+            const parent1Name = document.getElementById('parent1Name').value.trim();
+            const parent2Name = document.getElementById('parent2Name').value.trim();
+            
+            // Find parent IDs by name
+            if (parent1Name) {
+                const parent1 = FAMILY_DB.people.find(p => p.name.toLowerCase() === parent1Name.toLowerCase());
+                if (parent1) {
+                    parentIds.push(parent1.id);
+                } else {
+                    showError(`Parent "${parent1Name}" not found in the database. Please add them first or check the spelling.`);
+                    return;
+                }
+            }
+            
+            if (parent2Name) {
+                const parent2 = FAMILY_DB.people.find(p => p.name.toLowerCase() === parent2Name.toLowerCase());
+                if (parent2) {
+                    parentIds.push(parent2.id);
+                } else {
+                    showError(`Parent "${parent2Name}" not found in the database. Please add them first or check the spelling.`);
+                    return;
+                }
+            }
+        }
+        
+        // Use the name as the ID (converted to lowercase with underscores)
+        const newId = nameToId(name);
+        
+        // Check if ID already exists (shouldn't happen if name is unique, but just in case)
+        if (FAMILY_DB.people.some(p => p.id === newId)) {
+            showError(`A person with a similar name already exists. Please use a more specific name.`);
+            return;
+        }
         
         const newPerson = {
-            id: name.toLowerCase().replace(/\s/g, '_') + '_' + Date.now(),
+            id: newId,
             name: name,
             gender: gender,
-            parents: JSON.stringify(parents)
+            parents: JSON.stringify(parentIds)
         };
         
         console.log('📦 New person object:', newPerson);
         
         try {
             await addPersonToDB(newPerson);
-            await updateAdminPanel(); // This reloads the data
+            await updateAdminPanel();
             
             // Clear form
             document.getElementById('addPersonForm').reset();
-            showSuccess(`"${name}" added successfully!`);
+            document.getElementById('parent1Name').value = '';
+            document.getElementById('parent2Name').value = '';
+            
+            if (addType === 'root') {
+                showSuccess(`✅ Root ancestor "${name}" added successfully! (ID: ${newId})`);
+            } else {
+                if (parentIds.length === 0) {
+                    showSuccess(`✅ "${name}" added successfully as a root ancestor (no parents linked). (ID: ${newId})`);
+                } else {
+                    showSuccess(`✅ "${name}" added successfully with parent links! (ID: ${newId})`);
+                }
+            }
             
             console.log('🎉 Person added and UI updated!');
         } catch (error) {
             console.error('💥 Error in addNewPerson:', error);
-            // Error already shown in addPersonToDB
         }
     }
 
@@ -827,6 +962,7 @@
             
             if (isAdmin) {
                 await updateAdminPanel();
+                setupAddTypeSelector();
                 console.log('👑 Admin panel ready');
             }
             
@@ -873,7 +1009,6 @@
         });
     }
 
-    // Start the app
     setupEventListeners();
     init();
 </script>
