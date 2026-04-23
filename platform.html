@@ -159,6 +159,16 @@
             border: none;
             border-radius: 1rem;
             cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .search-form button:hover {
+            background: #6f451f;
+            transform: translateY(-2px);
+        }
+
+        .view-all-btn {
+            background: #c2894b;
         }
 
         .lineage-container {
@@ -166,6 +176,7 @@
             border-radius: 1.5rem;
             padding: 1.5rem;
             overflow-x: auto;
+            min-height: 400px;
         }
 
         .tree-title {
@@ -211,13 +222,14 @@
         }
 
         .gen-label {
-            font-size: 0.7rem;
+            font-size: 0.8rem;
             text-transform: uppercase;
             font-weight: bold;
             color: #b08052;
             text-align: center;
             width: 100%;
             margin-top: 1rem;
+            letter-spacing: 1px;
         }
 
         .connector-line {
@@ -283,10 +295,11 @@
             cursor: pointer;
         }
 
-        .admin-form {
+        .contribute-section {
             background: white;
             border-radius: 1.5rem;
             padding: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .form-group {
@@ -307,53 +320,9 @@
             border-radius: 0.8rem;
         }
 
-        .add-type-selector {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            padding: 0.5rem;
-            background: #f5ede1;
-            border-radius: 1rem;
-        }
-        
-        .type-option {
-            flex: 1;
-            text-align: center;
-            padding: 0.75rem;
-            cursor: pointer;
-            border-radius: 0.75rem;
-            transition: all 0.3s;
-            font-weight: 500;
-        }
-        
-        .type-option:hover {
-            background: #e8d9c8;
-        }
-        
-        .type-option.active {
-            background: #c2894b;
-            color: white;
-        }
-        
-        .parents-section {
-            transition: all 0.3s;
-        }
-        
-        .parents-section.disabled {
-            opacity: 0.5;
-            pointer-events: none;
-            background: #f9f9f9;
-            padding: 0.5rem;
-            border-radius: 0.8rem;
-        }
-        
-        .info-note {
-            background: #e8f4f8;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            font-size: 0.8rem;
-            margin-top: 0.5rem;
-            color: #0c5460;
+        .form-group input:focus {
+            outline: none;
+            border-color: #c2894b;
         }
 
         .submit-btn {
@@ -363,6 +332,12 @@
             border: none;
             border-radius: 1rem;
             cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .submit-btn:hover {
+            background: #3e2a1c;
+            transform: translateY(-2px);
         }
 
         .success-msg, .error-msg {
@@ -386,6 +361,15 @@
             color: #721c24;
         }
 
+        .info-note {
+            background: #e8f4f8;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            color: #0c5460;
+        }
+
         .loading {
             text-align: center;
             padding: 2rem;
@@ -405,6 +389,17 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .retry-btn {
+            background: #c2894b;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -412,7 +407,7 @@
     <div class="main-header">
         <div class="logo">
             <h1>📜 Ancestral Threads</h1>
-            <span>family lineage visualizer </span>
+            <span>family lineage visualizer - Community Edition</span>
         </div>
         <div class="user-info">
             <span>👋 <span id="usernameDisplay"></span></span>
@@ -422,33 +417,85 @@
     </div>
 
     <div class="tabs">
-        <button class="tab-btn active" data-tab="view">🔍 View Lineage</button>
+        <button class="tab-btn active" data-tab="contribute">✍️ Contribute Your Family</button>
+        <button class="tab-btn" data-tab="view">🔍 View Lineage</button>
         <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
     </div>
 
-    <div id="viewTab" class="tab-content active">
+    <!-- Contribute Tab - First (For all users) -->
+    <div id="contributeTab" class="tab-content active">
+        <div class="contribute-section">
+            <h3>🌱 Add Yourself to the Family Tree</h3>
+            <p style="margin-bottom: 1rem; color: #6c757d;">Help build our community tree! Add yourself and your parents.</p>
+            
+            <form id="contributeForm">
+                <div class="form-group">
+                    <label>Your Full Name *</label>
+                    <input type="text" id="userFullName" required placeholder="First Name Last Name (e.g., John Smith)">
+                    <div class="info-note">⚠️ Must include both first and last name for consistency</div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Your Gender</label>
+                    <select id="userGender">
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Father's Full Name</label>
+                    <input type="text" id="fatherName" placeholder="First Name Last Name">
+                    <div class="info-note">If known, please include both first and last name</div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Mother's Full Name</label>
+                    <input type="text" id="motherName" placeholder="First Name Last Name">
+                    <div class="info-note">If known, please include both first and last name</div>
+                </div>
+                
+                <button type="submit" class="submit-btn">🌳 Add to Family Tree</button>
+            </form>
+            <div id="contributeSuccessMsg" class="success-msg"></div>
+            <div id="contributeErrorMsg" class="error-msg"></div>
+        </div>
+        
+        <div class="info-note" style="margin-top: 1rem;">
+            💡 <strong>How it works:</strong> When you add yourself, we'll also add your parents if they're not already in the tree. 
+            This helps connect families together! All names require both first and last name for consistent searching.
+        </div>
+    </div>
+
+    <!-- View Lineage Tab -->
+    <div id="viewTab" class="tab-content">
         <div class="search-section">
             <form id="searchForm" class="search-form">
                 <div>
                     <label>👤 Search Family Member</label>
-                    <input type="text" id="searchName" placeholder="e.g., Emma, Lucas, Sophia...">
+                    <input type="text" id="searchName" placeholder="Enter full name (e.g., John Smith)">
                 </div>
-                <button type="submit">🌿 Reveal Lineage</button>
+                <div class="button-group">
+                    <button type="submit">🌿 View Lineage</button>
+                    <button type="button" id="viewWholeTreeBtn" class="view-all-btn">🌳 View Whole Family Tree</button>
+                </div>
             </form>
             <div id="searchStatus" style="margin-top: 0.8rem; color: #9e6d42;"></div>
         </div>
 
         <div class="lineage-container">
-            <div class="tree-title" id="treeTitle">✨ Lineage Tree</div>
+            <div class="tree-title" id="treeTitle">✨ Family Tree</div>
             <div id="visualTreeContainer">
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>Loading from Supabase...</p>
+                    <p>Loading family tree...</p>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Admin Panel Tab (Only visible to admins) -->
     <div id="adminTab" class="tab-content">
         <div class="admin-stats">
             <div class="stat-card">
@@ -459,64 +506,22 @@
                 <div class="stat-number" id="totalGenerations">0</div>
                 <div>Generations</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalContributors">0</div>
+                <div>Contributors</div>
+            </div>
         </div>
 
         <div class="names-list">
             <h3>📋 All Family Names</h3>
             <div id="namesGrid"></div>
         </div>
-
-        <div class="admin-form">
-            <h3>➕ Add New Family Member</h3>
-            
-            <div class="add-type-selector">
-                <div class="type-option active" data-type="child">
-                    👶 Add Child/Descendant
-                </div>
-                <div class="type-option" data-type="root">
-                    🌳 Add Root Ancestor
-                </div>
-            </div>
-            
-            <form id="addPersonForm">
-                <div class="form-group">
-                    <label>Full Name *</label>
-                    <input type="text" id="newName" required placeholder="e.g., John Doe">
-                </div>
-                <div class="form-group">
-                    <label>Gender</label>
-                    <select id="newGender">
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-                
-                <div id="parentsSection" class="parents-section">
-                    <div class="form-group">
-                        <label>Parent 1 Name (optional)</label>
-                        <input type="text" id="parent1Name" placeholder="Enter parent's full name (e.g., John Doe)">
-                    </div>
-                    <div class="form-group">
-                        <label>Parent 2 Name (optional)</label>
-                        <input type="text" id="parent2Name" placeholder="Enter parent's full name">
-                    </div>
-                    <div class="info-note">
-                        💡 Tip: Leave both parent fields empty if this person has no parents in the system yet
-                    </div>
-                </div>
-                
-                <button type="submit" id="submitPersonBtn" class="submit-btn">➕ Add Person</button>
-            </form>
-            <div id="successMsg" class="success-msg"></div>
-            <div id="errorMsg" class="error-msg"></div>
-        </div>
     </div>
 </div>
 
 <script>
     // ==============================================================
-    // YOUR SUPABASE CONFIGURATION
+    // SUPABASE CONFIGURATION
     // ==============================================================
     const SUPABASE_URL = 'https://snkcdsfzxjruxhwxnoxh.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_-IHen1e8xLiVH9_mJBpKmA_0GQSRFJx';
@@ -524,36 +529,53 @@
     let currentUser = null;
     let isAdmin = false;
     let FAMILY_DB = { people: [] };
-    let addType = 'child';
 
-    function showError(message) {
-        const errorDiv = document.getElementById('errorMsg');
-        errorDiv.textContent = `❌ ${message}`;
-        errorDiv.classList.add('show');
-        setTimeout(() => errorDiv.classList.remove('show'), 5000);
+    function showError(elementId, message) {
+        const errorDiv = document.getElementById(elementId);
+        if (errorDiv) {
+            errorDiv.textContent = `❌ ${message}`;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        }
         console.error('ERROR:', message);
     }
 
-    function showSuccess(message) {
-        const successDiv = document.getElementById('successMsg');
-        successDiv.textContent = `✅ ${message}`;
-        successDiv.classList.add('show');
-        setTimeout(() => successDiv.classList.remove('show'), 3000);
+    function showSuccess(elementId, message) {
+        const successDiv = document.getElementById(elementId);
+        if (successDiv) {
+            successDiv.textContent = `✅ ${message}`;
+            successDiv.classList.add('show');
+            setTimeout(() => successDiv.classList.remove('show'), 3000);
+        }
+        console.log('SUCCESS:', message);
     }
 
-    // Helper function to clean name for ID (remove spaces, special chars)
+    function validateFullName(name) {
+        const trimmed = name.trim();
+        if (!trimmed) return { valid: false, message: 'Name cannot be empty' };
+        const parts = trimmed.split(/\s+/);
+        if (parts.length < 2) {
+            return { valid: false, message: 'Please enter both first and last name' };
+        }
+        if (parts.length > 4) {
+            return { valid: false, message: 'Name seems too long. Please enter a valid name.' };
+        }
+        return { valid: true, message: '' };
+    }
+
     function nameToId(name) {
         return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     }
 
-    // Load all people from Supabase
     async function loadPeople() {
         try {
-            console.log('📥 Loading people from Supabase...');
+            console.log('Loading people from Supabase...');
             const response = await fetch(`${SUPABASE_URL}/rest/v1/people?select=*`, {
+                method: 'GET',
                 headers: {
                     'apikey': SUPABASE_ANON_KEY,
-                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Content-Type': 'application/json'
                 }
             });
             
@@ -567,15 +589,12 @@
             return data;
         } catch (error) {
             console.error('❌ Load error:', error);
-            showError(`Failed to load: ${error.message}`);
             throw error;
         }
     }
 
-    // Add a new person to Supabase
     async function addPersonToDB(person) {
         try {
-            console.log('📤 Adding person to Supabase:', person);
             const response = await fetch(`${SUPABASE_URL}/rest/v1/people`, {
                 method: 'POST',
                 headers: {
@@ -587,26 +606,20 @@
                 body: JSON.stringify(person)
             });
             
-            console.log('📊 Response status:', response.status);
-            
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
             
-            console.log('✅ Person added successfully!');
             return true;
         } catch (error) {
             console.error('❌ Add error:', error);
-            showError(`Failed to add: ${error.message}`);
             throw error;
         }
     }
 
-    // Delete a person from Supabase
     async function deletePersonFromDB(personId) {
         try {
-            console.log('🗑️ Deleting person:', personId);
             const response = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
                 method: 'DELETE',
                 headers: {
@@ -615,22 +628,18 @@
                 }
             });
             
-            console.log('📊 Delete response status:', response.status);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            console.log('✅ Person deleted successfully!');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             return true;
         } catch (error) {
             console.error('❌ Delete error:', error);
-            showError(`Failed to delete: ${error.message}`);
             throw error;
         }
     }
 
-    // Find person by name (partial match)
+    function findPersonByName(name) {
+        return FAMILY_DB.people.find(p => p.name.toLowerCase() === name.trim().toLowerCase());
+    }
+
     function findPersonByPartialName(searchTerm) {
         const term = searchTerm.trim().toLowerCase();
         if (term === "") return null;
@@ -642,7 +651,6 @@
         return partialMatches.length > 0 ? partialMatches[0] : null;
     }
 
-    // Get all ancestors of a person
     function getAncestors(person, visited = new Set()) {
         if (!person || visited.has(person.id)) return [];
         visited.add(person.id);
@@ -660,8 +668,91 @@
         return ancestors;
     }
 
-    // Build generation levels
-    function buildGenerations(ancestors) {
+    function getDescendants(person, visited = new Set()) {
+        if (!person || visited.has(person.id)) return [];
+        visited.add(person.id);
+        let descendants = [person];
+        
+        const children = FAMILY_DB.people.filter(p => {
+            if (!p.parents || p.parents.length === 0) return false;
+            let parentsArray = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
+            return parentsArray.includes(person.id);
+        });
+        
+        for (let child of children) {
+            descendants = descendants.concat(getDescendants(child, visited));
+        }
+        return descendants;
+    }
+
+    function getFullFamilyTree() {
+        const rootAncestors = FAMILY_DB.people.filter(person => {
+            let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            return !parents || parents.length === 0;
+        });
+        
+        let allTreeMembers = new Set();
+        for (let root of rootAncestors) {
+            const descendants = getDescendants(root);
+            descendants.forEach(d => allTreeMembers.add(d));
+        }
+        
+        if (allTreeMembers.size === 0) {
+            FAMILY_DB.people.forEach(p => allTreeMembers.add(p));
+        }
+        
+        return Array.from(allTreeMembers);
+    }
+
+    function getGenerationDepth(person, visited = new Set()) {
+        if (visited.has(person.id)) return 0;
+        visited.add(person.id);
+        
+        let maxDepth = 0;
+        if (person.parents && person.parents.length) {
+            let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            for (let parentId of parentsArray) {
+                const parent = FAMILY_DB.people.find(p => p.id === parentId);
+                if (parent) {
+                    maxDepth = Math.max(maxDepth, getGenerationDepth(parent, visited) + 1);
+                }
+            }
+        }
+        return maxDepth;
+    }
+
+    function buildFullTreeGenerations() {
+        const allMembers = getFullFamilyTree();
+        if (allMembers.length === 0) return [];
+        
+        const depths = new Map();
+        let maxDepth = 0;
+        
+        for (let person of allMembers) {
+            const depth = getGenerationDepth(person);
+            depths.set(person.id, depth);
+            maxDepth = Math.max(maxDepth, depth);
+        }
+        
+        const groups = new Map();
+        for (let person of allMembers) {
+            const depth = depths.get(person.id) || 0;
+            if (!groups.has(depth)) groups.set(depth, []);
+            groups.get(depth).push(person);
+        }
+        
+        const result = [];
+        for (let i = 0; i <= maxDepth; i++) {
+            if (groups.has(i)) {
+                result.push(groups.get(i));
+            }
+        }
+        
+        return result;
+    }
+
+    // Build lineage generations with proper order (you at the bottom, ancestors above)
+    function buildLineageGenerations(ancestors) {
         if (!ancestors.length) return [];
         
         const depthMap = new Map();
@@ -693,27 +784,28 @@
             }
         }
         
-        const maxDepth = Math.max(...groups.keys());
+        // Get all depths and sort from highest (oldest ancestors) to lowest (selected person)
+        const depths = Array.from(groups.keys()).sort((a, b) => b - a);
         const result = [];
-        for (let i = 0; i <= maxDepth; i++) {
-            result.push(groups.get(i) || []);
+        for (let depth of depths) {
+            result.push(groups.get(depth));
         }
+        
         return result;
     }
 
-    // Render the family tree
-    function renderLineageTree(searchTerm) {
+    function renderLineageView(searchTerm) {
         const container = document.getElementById("visualTreeContainer");
         const titleSpan = document.getElementById("treeTitle");
         
         if (!searchTerm || searchTerm.trim() === "") {
-            container.innerHTML = `<div style="text-align:center;padding:3rem;">🌱 Please enter a family member's name.</div>`;
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🌱 Enter a name to see their ancestors.</div>`;
             return;
         }
         
         const person = findPersonByPartialName(searchTerm);
         if (!person) {
-            container.innerHTML = `<div style="text-align:center;padding:3rem;">🍂 No records found for "${escapeHtml(searchTerm)}"</div>`;
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🍂 No records found for "${escapeHtml(searchTerm)}"<br><br>💡 Try contributing your family using the "Contribute Your Family" tab!</div>`;
             return;
         }
         
@@ -727,29 +819,74 @@
             }
         }
         
-        const generations = buildGenerations(uniqueAncestors);
-        titleSpan.innerHTML = `🌳 Lineage of ${escapeHtml(person.name)}`;
-        
-        const reversed = [...generations].reverse();
-        const genNames = ["👴👵 Great-Grandparents", "👵👴 Grandparents", "👨‍👩‍👧 Parents", "🌟 Current Generation"];
+        const generations = buildLineageGenerations(uniqueAncestors);
+        titleSpan.innerHTML = `📜 Lineage of ${escapeHtml(person.name)}`;
         
         let html = `<div class="family-tree">`;
-        for (let idx = 0; idx < reversed.length; idx++) {
-            const level = reversed[idx];
-            const labelText = genNames[idx] || `Generation ${idx + 1}`;
+        // Start from the top (oldest ancestors)
+        let generationCounter = 1;
+        for (let idx = 0; idx < generations.length; idx++) {
+            const level = generations[idx];
+            if (level.length === 0) continue;
+            
+            // Check if this is the last level (selected person)
+            const isLastLevel = (idx === generations.length - 1);
+            const labelText = isLastLevel ? `📍 Generation ${generationCounter} (You)` : `📍 Generation ${generationCounter}`;
+            
             html += `<div class="gen-label">${labelText}</div>`;
             html += `<div class="generation">`;
             for (let member of level) {
-                html += `<div class="tree-node"><strong>${escapeHtml(member.name)}</strong></div>`;
+                const isCurrentPerson = (member.id === person.id);
+                const nodeClass = isCurrentPerson ? 'tree-node current-person' : 'tree-node';
+                html += `<div class="${nodeClass}" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
             }
             html += `</div>`;
-            if (idx < reversed.length - 1 && level.length > 0) {
+            if (idx < generations.length - 1) {
+                html += `<div class="connector-line">▼</div>`;
+            }
+            generationCounter++;
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+
+    function renderWholeFamilyTree() {
+        const container = document.getElementById("visualTreeContainer");
+        const titleSpan = document.getElementById("treeTitle");
+        
+        const generations = buildFullTreeGenerations();
+        
+        if (!generations || generations.length === 0 || generations.every(g => g.length === 0)) {
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🌱 Not enough data to build the complete family tree. Add more family members using the "Contribute Your Family" tab!</div>`;
+            return;
+        }
+        
+        titleSpan.innerHTML = `🌳 Complete Family Tree (All ${FAMILY_DB.people.length} Members)`;
+        
+        let html = `<div class="family-tree">`;
+        for (let idx = 0; idx < generations.length; idx++) {
+            const level = generations[idx];
+            if (level.length === 0) continue;
+            const generationNumber = idx + 1;
+            html += `<div class="gen-label">📍 Generation ${generationNumber}</div>`;
+            html += `<div class="generation">`;
+            for (let member of level) {
+                html += `<div class="tree-node" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
+            }
+            html += `</div>`;
+            if (idx < generations.length - 1) {
                 html += `<div class="connector-line">▼</div>`;
             }
         }
         html += `</div>`;
         container.innerHTML = html;
     }
+
+    window.searchThisPerson = function(name) {
+        document.getElementById('searchName').value = name;
+        renderLineageView(name);
+        document.getElementById('searchStatus').innerHTML = `🔍 Showing lineage for "${escapeHtml(name)}"`;
+    };
 
     function escapeHtml(str) {
         if (!str) return '';
@@ -761,7 +898,108 @@
         });
     }
 
-    // Update admin panel with latest data
+    async function addOrGetPerson(name, gender = 'unknown') {
+        if (!name) return null;
+        
+        const validation = validateFullName(name);
+        if (!validation.valid) {
+            showError('contributeErrorMsg', validation.message);
+            return null;
+        }
+        
+        let existingPerson = findPersonByName(name);
+        if (existingPerson) return existingPerson;
+        
+        const newId = nameToId(name);
+        const newPerson = {
+            id: newId,
+            name: name,
+            gender: gender,
+            parents: JSON.stringify([])
+        };
+        
+        try {
+            await addPersonToDB(newPerson);
+            await loadPeople();
+            return findPersonByName(name);
+        } catch (error) {
+            console.error('Failed to add person:', error);
+            return null;
+        }
+    }
+
+    async function contributeToTree(event) {
+        event.preventDefault();
+        
+        const userName = document.getElementById('userFullName').value.trim();
+        const userGender = document.getElementById('userGender').value;
+        const fatherName = document.getElementById('fatherName').value.trim();
+        const motherName = document.getElementById('motherName').value.trim();
+        
+        const userValidation = validateFullName(userName);
+        if (!userValidation.valid) {
+            showError('contributeErrorMsg', `Your name: ${userValidation.message}`);
+            return;
+        }
+        
+        const existingUser = findPersonByName(userName);
+        if (existingUser) {
+            showError('contributeErrorMsg', `"${userName}" is already in the family tree! Try searching for them instead.`);
+            return;
+        }
+        
+        showSuccess('contributeSuccessMsg', 'Adding your information to the family tree...');
+        
+        try {
+            let parentIds = [];
+            
+            if (fatherName) {
+                const fatherValidation = validateFullName(fatherName);
+                if (fatherValidation.valid) {
+                    const father = await addOrGetPerson(fatherName, 'male');
+                    if (father) parentIds.push(father.id);
+                } else {
+                    showError('contributeErrorMsg', `Father's name: ${fatherValidation.message}`);
+                    return;
+                }
+            }
+            
+            if (motherName) {
+                const motherValidation = validateFullName(motherName);
+                if (motherValidation.valid) {
+                    const mother = await addOrGetPerson(motherName, 'female');
+                    if (mother) parentIds.push(mother.id);
+                } else {
+                    showError('contributeErrorMsg', `Mother's name: ${motherValidation.message}`);
+                    return;
+                }
+            }
+            
+            const userId = nameToId(userName);
+            const newUser = {
+                id: userId,
+                name: userName,
+                gender: userGender,
+                parents: JSON.stringify(parentIds)
+            };
+            
+            await addPersonToDB(newUser);
+            await loadPeople();
+            
+            let message = `✅ Successfully added "${userName}" to the family tree!`;
+            if (fatherName) message += ` 👨 Father: ${fatherName}`;
+            if (motherName) message += ` 👩 Mother: ${motherName}`;
+            
+            showSuccess('contributeSuccessMsg', message);
+            document.getElementById('contributeForm').reset();
+            
+            if (isAdmin) await updateAdminPanel();
+            
+        } catch (error) {
+            showError('contributeErrorMsg', `Failed to add: ${error.message}. Please check your internet connection.`);
+        }
+    }
+
     async function updateAdminPanel() {
         if (!isAdmin) return;
         
@@ -783,6 +1021,7 @@
             maxDepth = Math.max(maxDepth, depth);
         });
         document.getElementById('totalGenerations').textContent = maxDepth + 1;
+        document.getElementById('totalContributors').textContent = FAMILY_DB.people.length;
         
         const namesGrid = document.getElementById('namesGrid');
         namesGrid.innerHTML = FAMILY_DB.people.map(person => `
@@ -796,142 +1035,29 @@
         `).join('');
     }
 
-    // Delete person handler
     window.deletePersonHandler = async function(personId) {
+        if (!isAdmin) {
+            alert('Only administrators can delete records.');
+            return;
+        }
+        
         const person = FAMILY_DB.people.find(p => p.id === personId);
         if (!person) return;
         
-        if (confirm(`Are you sure you want to delete "${person.name}"? This may affect family relationships.`)) {
+        if (confirm(`Are you sure you want to delete "${person.name}"? This will also remove them from all family relationships.`)) {
             try {
                 await deletePersonFromDB(personId);
                 await updateAdminPanel();
-                showSuccess(`"${person.name}" deleted successfully!`);
+                alert(`"${person.name}" deleted successfully!`);
             } catch (error) {
-                // Error already shown
+                alert(`Failed to delete: ${error.message}`);
             }
         }
     };
 
-    // Setup add type selector
-    function setupAddTypeSelector() {
-        const options = document.querySelectorAll('.type-option');
-        const parentsSection = document.getElementById('parentsSection');
-        
-        options.forEach(option => {
-            option.addEventListener('click', () => {
-                options.forEach(opt => opt.classList.remove('active'));
-                option.classList.add('active');
-                addType = option.dataset.type;
-                console.log('Add type changed to:', addType);
-                
-                if (addType === 'root') {
-                    parentsSection.classList.add('disabled');
-                    document.getElementById('parent1Name').value = '';
-                    document.getElementById('parent2Name').value = '';
-                } else {
-                    parentsSection.classList.remove('disabled');
-                }
-            });
-        });
-    }
-
-    // Add new person from form
-    async function addNewPerson(event) {
-        event.preventDefault();
-        console.log('🎯 Add person form submitted!');
-        
-        const name = document.getElementById('newName').value.trim();
-        const gender = document.getElementById('newGender').value;
-        
-        if (!name) {
-            showError('Please enter a name');
-            return;
-        }
-        
-        // Check if name already exists
-        const existingPerson = FAMILY_DB.people.find(p => p.name.toLowerCase() === name.toLowerCase());
-        if (existingPerson) {
-            showError(`"${name}" already exists! Please use a different name or add a suffix.`);
-            return;
-        }
-        
-        let parentIds = [];
-        
-        if (addType === 'child') {
-            const parent1Name = document.getElementById('parent1Name').value.trim();
-            const parent2Name = document.getElementById('parent2Name').value.trim();
-            
-            // Find parent IDs by name
-            if (parent1Name) {
-                const parent1 = FAMILY_DB.people.find(p => p.name.toLowerCase() === parent1Name.toLowerCase());
-                if (parent1) {
-                    parentIds.push(parent1.id);
-                } else {
-                    showError(`Parent "${parent1Name}" not found in the database. Please add them first or check the spelling.`);
-                    return;
-                }
-            }
-            
-            if (parent2Name) {
-                const parent2 = FAMILY_DB.people.find(p => p.name.toLowerCase() === parent2Name.toLowerCase());
-                if (parent2) {
-                    parentIds.push(parent2.id);
-                } else {
-                    showError(`Parent "${parent2Name}" not found in the database. Please add them first or check the spelling.`);
-                    return;
-                }
-            }
-        }
-        
-        // Use the name as the ID (converted to lowercase with underscores)
-        const newId = nameToId(name);
-        
-        // Check if ID already exists (shouldn't happen if name is unique, but just in case)
-        if (FAMILY_DB.people.some(p => p.id === newId)) {
-            showError(`A person with a similar name already exists. Please use a more specific name.`);
-            return;
-        }
-        
-        const newPerson = {
-            id: newId,
-            name: name,
-            gender: gender,
-            parents: JSON.stringify(parentIds)
-        };
-        
-        console.log('📦 New person object:', newPerson);
-        
-        try {
-            await addPersonToDB(newPerson);
-            await updateAdminPanel();
-            
-            // Clear form
-            document.getElementById('addPersonForm').reset();
-            document.getElementById('parent1Name').value = '';
-            document.getElementById('parent2Name').value = '';
-            
-            if (addType === 'root') {
-                showSuccess(`✅ Root ancestor "${name}" added successfully! (ID: ${newId})`);
-            } else {
-                if (parentIds.length === 0) {
-                    showSuccess(`✅ "${name}" added successfully as a root ancestor (no parents linked). (ID: ${newId})`);
-                } else {
-                    showSuccess(`✅ "${name}" added successfully with parent links! (ID: ${newId})`);
-                }
-            }
-            
-            console.log('🎉 Person added and UI updated!');
-        } catch (error) {
-            console.error('💥 Error in addNewPerson:', error);
-        }
-    }
-
-    // Auth check
     function checkAuth() {
         currentUser = sessionStorage.getItem('currentUser');
         isAdmin = sessionStorage.getItem('isAdmin') === 'true';
-        
-        console.log('Auth check:', { currentUser, isAdmin });
         
         if (!currentUser) {
             window.location.href = 'login.html';
@@ -951,52 +1077,41 @@
         window.location.href = 'login.html';
     }
 
-    // Initialize the app
     async function init() {
-        console.log('🚀 Initializing app...');
-        
         if (!checkAuth()) return;
         
         try {
             await loadPeople();
             
-            if (isAdmin) {
-                await updateAdminPanel();
-                setupAddTypeSelector();
-                console.log('👑 Admin panel ready');
-            }
+            if (isAdmin) await updateAdminPanel();
             
-            document.getElementById('visualTreeContainer').innerHTML = '<div style="text-align:center;padding:3rem;">🔍 Enter a name above to see the family roots.</div>';
-            console.log('✅ App initialized successfully with', FAMILY_DB.people.length, 'people');
+            document.getElementById('visualTreeContainer').innerHTML = '<div style="text-align:center;padding:3rem;">🔍 Enter a name above to explore the family tree.</div>';
+            console.log('✅ App initialized with', FAMILY_DB.people.length, 'people');
         } catch (error) {
-            console.error('❌ Init error:', error);
+            console.error('Init error:', error);
             document.getElementById('visualTreeContainer').innerHTML = `
                 <div style="text-align:center;padding:3rem;color:#c33;">
-                    ❌ Failed to load data: ${error.message}
+                    ❌ Failed to load data: ${error.message}<br><br>
+                    <button onclick="location.reload()" class="submit-btn retry-btn">🔄 Retry</button>
                 </div>
             `;
         }
     }
 
-    // Set up event listeners
     function setupEventListeners() {
-        console.log('🔧 Setting up event listeners...');
-        
         document.getElementById('logoutBtn').addEventListener('click', logout);
         
         document.getElementById('searchForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const searchValue = document.getElementById('searchName').value;
-            renderLineageTree(searchValue);
+            renderLineageView(searchValue);
         });
         
-        const addForm = document.getElementById('addPersonForm');
-        if (addForm) {
-            console.log('✅ Found addPersonForm, attaching submit listener');
-            addForm.addEventListener('submit', addNewPerson);
-        } else {
-            console.error('❌ Could not find addPersonForm!');
-        }
+        document.getElementById('viewWholeTreeBtn').addEventListener('click', () => {
+            renderWholeFamilyTree();
+        });
+        
+        document.getElementById('contributeForm').addEventListener('submit', contributeToTree);
         
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
