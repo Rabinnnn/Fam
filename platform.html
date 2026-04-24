@@ -167,8 +167,22 @@
             transform: translateY(-2px);
         }
 
-        .view-all-btn {
+        .view-all-btn, .export-btn {
             background: #c2894b;
+        }
+
+        .export-btn {
+            background: #28a745;
+        }
+
+        .export-btn:hover {
+            background: #1e7e34;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
         }
 
         .lineage-container {
@@ -390,12 +404,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        .button-group {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
         .retry-btn {
             background: #c2894b;
             margin-top: 1rem;
@@ -434,7 +442,7 @@
         <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
     </div>
 
-    <!-- Contribute Tab - First (For all users) -->
+    <!-- Contribute Tab -->
     <div id="contributeTab" class="tab-content active">
         <div class="contribute-section">
             <h3>🌱 Add Yourself to the Family Tree</h3>
@@ -491,6 +499,7 @@
                 <div class="button-group">
                     <button type="submit">🌿 View Lineage</button>
                     <button type="button" id="viewWholeTreeBtn" class="view-all-btn">🌳 View Whole Family Tree</button>
+                    <button type="button" id="exportDataBtn" class="export-btn">📊 Export to Spreadsheet</button>
                 </div>
             </form>
             <div id="searchStatus" style="margin-top: 0.8rem; color: #9e6d42;"></div>
@@ -507,7 +516,7 @@
         </div>
     </div>
 
-    <!-- Admin Panel Tab (Only visible to admins) -->
+    <!-- Admin Panel Tab -->
     <div id="adminTab" class="tab-content">
         <div class="admin-stats">
             <div class="stat-card">
@@ -714,15 +723,13 @@
         return maxDepth;
     }
 
-    // Find separate family clusters (unconnected groups)
+    // Find separate family clusters
     function findFamilyClusters() {
-        // Build adjacency list for family connections
         const adjacency = new Map();
         FAMILY_DB.people.forEach(person => {
             adjacency.set(person.id, new Set());
         });
         
-        // Add edges: parent-child relationships
         FAMILY_DB.people.forEach(person => {
             if (person.parents && person.parents.length) {
                 let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
@@ -735,7 +742,6 @@
             }
         });
         
-        // Find connected components (family clusters)
         const visited = new Set();
         const clusters = [];
         
@@ -770,7 +776,6 @@
 
     // Build tree for a single family cluster
     function getFamilyTreeForCluster(cluster) {
-        // Save original DB
         const originalDB = FAMILY_DB;
         FAMILY_DB = { people: cluster };
         
@@ -791,7 +796,6 @@
         
         const members = Array.from(allTreeMembers);
         
-        // Build generations for this cluster
         const depths = new Map();
         let maxDepth = 0;
         
@@ -815,7 +819,6 @@
             }
         }
         
-        // Find family name
         let familyName = "Unknown Family";
         if (rootAncestors.length > 0 && rootAncestors[0].name) {
             const nameParts = rootAncestors[0].name.split(' ');
@@ -825,10 +828,147 @@
             familyName = nameParts[nameParts.length - 1] + " Family";
         }
         
-        // Restore original DB
         FAMILY_DB = originalDB;
         
-        return { generations: result, familyName, memberCount: members.length };
+        return { generations: result, familyName, memberCount: members.length, depths };
+    }
+
+    // IMPROVED EXPORT FUNCTION - Organized by Family, Generation, Relationship
+    function exportToSpreadsheet() {
+        if (!FAMILY_DB.people || FAMILY_DB.people.length === 0) {
+            showError('contributeErrorMsg', 'No data to export. Add some family members first!');
+            return;
+        }
+        
+        const clusters = findFamilyClusters();
+        const parentNameMap = new Map();
+        FAMILY_DB.people.forEach(person => {
+            parentNameMap.set(person.id, person.name);
+        });
+        
+        let csvRows = [];
+        
+        // Add header information
+        csvRows.push('# ANCESTRAL THREADS - FAMILY TREE EXPORT');
+        csvRows.push(`# Generated: ${new Date().toLocaleString()}`);
+        csvRows.push(`# Total Families: ${clusters.length}`);
+        csvRows.push(`# Total Members: ${FAMILY_DB.people.length}`);
+        csvRows.push('#');
+        csvRows.push('');
+        
+        // Process each family separately
+        clusters.forEach((cluster, clusterIndex) => {
+            const familyData = getFamilyTreeForCluster(cluster);
+            const familyLetter = String.fromCharCode(65 + clusterIndex);
+            const familyName = familyData.familyName;
+            
+            csvRows.push(`"=== FAMILY ${familyLetter}: ${familyName} ==="`);
+            csvRows.push(`"Total members in this family: ${familyData.memberCount}"`);
+            csvRows.push('');
+            
+            // Create the main data table
+            csvRows.push('"Family","Generation","Relationship Type","Full Name","Gender","Father","Mother","Children Count"');
+            
+            // Get generation depths for sorting
+            const membersWithDepth = [];
+            cluster.forEach(person => {
+                let depth = 0;
+                let current = person;
+                let parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
+                while(parents && parents.length > 0) {
+                    depth++;
+                    current = cluster.find(p => p.id === parents[0]);
+                    if(!current) break;
+                    parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
+                }
+                
+                // Determine relationship type
+                let relationshipType = "";
+                if (depth === 0) relationshipType = "Root Ancestor / Founder";
+                else if (depth === 1) relationshipType = "Parent / 1st Generation Descendant";
+                else if (depth === 2) relationshipType = "Grandchild / 2nd Generation Descendant";
+                else if (depth === 3) relationshipType = "Great-Grandchild / 3rd Generation Descendant";
+                else relationshipType = `${depth}th Generation Descendant`;
+                
+                // Count children
+                const childrenCount = cluster.filter(p => {
+                    let pParents = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
+                    return pParents && pParents.includes(person.id);
+                }).length;
+                
+                // Get parents' names
+                let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+                let fatherName = parentsArray && parentsArray[0] ? (parentNameMap.get(parentsArray[0]) || 'Unknown') : '';
+                let motherName = parentsArray && parentsArray[1] ? (parentNameMap.get(parentsArray[1]) || 'Unknown') : '';
+                
+                // Determine generation label for display
+                let generationLabel = "";
+                if (depth === 0) generationLabel = "Generation 1 (Root)";
+                else if (depth === 1) generationLabel = "Generation 2";
+                else if (depth === 2) generationLabel = "Generation 3";
+                else if (depth === 3) generationLabel = "Generation 4";
+                else generationLabel = `Generation ${depth + 1}`;
+                
+                membersWithDepth.push({
+                    generationDepth: depth,
+                    generationLabel: generationLabel,
+                    relationshipType: relationshipType,
+                    name: person.name,
+                    gender: person.gender || 'unknown',
+                    father: fatherName,
+                    mother: motherName,
+                    childrenCount: childrenCount
+                });
+            });
+            
+            // Sort by generation depth (oldest first)
+            membersWithDepth.sort((a, b) => a.generationDepth - b.generationDepth);
+            
+            // Add rows to CSV
+            membersWithDepth.forEach(member => {
+                csvRows.push(`"${familyLetter}: ${familyName}","${member.generationLabel}","${member.relationshipType}","${member.name}","${member.gender}","${member.father}","${member.mother}","${member.childrenCount}"`);
+            });
+            
+            csvRows.push('');
+            csvRows.push('');
+        });
+        
+        // Add a summary sheet at the end
+        csvRows.push('"=== SUMMARY: All Families Overview ==="');
+        csvRows.push('"Family","Family Letter","Total Members","Root Ancestors"');
+        
+        clusters.forEach((cluster, clusterIndex) => {
+            const familyLetter = String.fromCharCode(65 + clusterIndex);
+            let rootAncestors = cluster.filter(person => {
+                let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+                return !parents || parents.length === 0;
+            });
+            const rootNames = rootAncestors.map(r => r.name).join(', ');
+            
+            let familyName = "Unknown";
+            if (rootAncestors.length > 0 && rootAncestors[0].name) {
+                const nameParts = rootAncestors[0].name.split(' ');
+                familyName = nameParts[nameParts.length - 1] + " Family";
+            }
+            
+            csvRows.push(`"${familyName}","${familyLetter}","${cluster.length}","${rootNames}"`);
+        });
+        
+        // Create CSV content
+        let csvContent = csvRows.join('\n');
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.setAttribute('download', `family_tree_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showSuccess('contributeSuccessMsg', `Exported ${FAMILY_DB.people.length} family members across ${clusters.length} families!`);
     }
 
     function buildLineageGenerations(ancestors) {
@@ -930,7 +1070,6 @@
         const container = document.getElementById("visualTreeContainer");
         const titleSpan = document.getElementById("treeTitle");
         
-        // Find separate family clusters
         const clusters = findFamilyClusters();
         
         if (clusters.length === 0 || clusters.every(c => c.length === 0)) {
@@ -939,7 +1078,6 @@
         }
         
         if (clusters.length === 1) {
-            // Single family - display normally
             const family = getFamilyTreeForCluster(clusters[0]);
             titleSpan.innerHTML = `🌳 Complete Family Tree - ${family.familyName} (${family.memberCount} members)`;
             
@@ -963,7 +1101,6 @@
             container.innerHTML = html;
             
         } else {
-            // Multiple unrelated families - display separately
             titleSpan.innerHTML = `🌳 Family Trees (${clusters.length} separate families found)`;
             
             let html = `<div style="display: flex; flex-direction: column; gap: 2rem;">`;
@@ -1003,7 +1140,6 @@
         document.getElementById('searchName').value = name;
         renderLineageView(name);
         document.getElementById('searchStatus').innerHTML = `🔍 Showing lineage for "${escapeHtml(name)}"`;
-        // Switch to view tab
         document.querySelector('.tab-btn[data-tab="view"]').click();
     };
 
@@ -1228,6 +1364,10 @@
         
         document.getElementById('viewWholeTreeBtn').addEventListener('click', () => {
             renderWholeFamilyTree();
+        });
+        
+        document.getElementById('exportDataBtn').addEventListener('click', () => {
+            exportToSpreadsheet();
         });
         
         document.getElementById('contributeForm').addEventListener('submit', contributeToTree);
