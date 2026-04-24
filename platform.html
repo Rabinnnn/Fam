@@ -400,6 +400,18 @@
             background: #c2894b;
             margin-top: 1rem;
         }
+
+        .family-separator {
+            border-top: 3px solid #c2894b;
+            padding-top: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .family-heading {
+            color: #5a3e2b;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body>
@@ -417,7 +429,7 @@
     </div>
 
     <div class="tabs">
-        <button class="tab-btn active" data-tab="contribute">✍️ Contribute Your Family</button>
+        <button class="tab-btn active" data-tab="contribute">✍️ Add Your Details</button>
         <button class="tab-btn" data-tab="view">🔍 View Lineage</button>
         <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
     </div>
@@ -685,25 +697,6 @@
         return descendants;
     }
 
-    function getFullFamilyTree() {
-        const rootAncestors = FAMILY_DB.people.filter(person => {
-            let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
-            return !parents || parents.length === 0;
-        });
-        
-        let allTreeMembers = new Set();
-        for (let root of rootAncestors) {
-            const descendants = getDescendants(root);
-            descendants.forEach(d => allTreeMembers.add(d));
-        }
-        
-        if (allTreeMembers.size === 0) {
-            FAMILY_DB.people.forEach(p => allTreeMembers.add(p));
-        }
-        
-        return Array.from(allTreeMembers);
-    }
-
     function getGenerationDepth(person, visited = new Set()) {
         if (visited.has(person.id)) return 0;
         visited.add(person.id);
@@ -721,21 +714,95 @@
         return maxDepth;
     }
 
-    function buildFullTreeGenerations() {
-        const allMembers = getFullFamilyTree();
-        if (allMembers.length === 0) return [];
+    // Find separate family clusters (unconnected groups)
+    function findFamilyClusters() {
+        // Build adjacency list for family connections
+        const adjacency = new Map();
+        FAMILY_DB.people.forEach(person => {
+            adjacency.set(person.id, new Set());
+        });
         
+        // Add edges: parent-child relationships
+        FAMILY_DB.people.forEach(person => {
+            if (person.parents && person.parents.length) {
+                let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+                parentsArray.forEach(parentId => {
+                    if (adjacency.has(parentId)) {
+                        adjacency.get(parentId).add(person.id);
+                        adjacency.get(person.id).add(parentId);
+                    }
+                });
+            }
+        });
+        
+        // Find connected components (family clusters)
+        const visited = new Set();
+        const clusters = [];
+        
+        for (let person of FAMILY_DB.people) {
+            if (!visited.has(person.id)) {
+                const cluster = [];
+                const queue = [person.id];
+                visited.add(person.id);
+                
+                while (queue.length > 0) {
+                    const currentId = queue.shift();
+                    const currentPerson = FAMILY_DB.people.find(p => p.id === currentId);
+                    if (currentPerson) cluster.push(currentPerson);
+                    
+                    const neighbors = adjacency.get(currentId) || new Set();
+                    for (let neighborId of neighbors) {
+                        if (!visited.has(neighborId)) {
+                            visited.add(neighborId);
+                            queue.push(neighborId);
+                        }
+                    }
+                }
+                
+                if (cluster.length > 0) {
+                    clusters.push(cluster);
+                }
+            }
+        }
+        
+        return clusters;
+    }
+
+    // Build tree for a single family cluster
+    function getFamilyTreeForCluster(cluster) {
+        // Save original DB
+        const originalDB = FAMILY_DB;
+        FAMILY_DB = { people: cluster };
+        
+        const rootAncestors = cluster.filter(person => {
+            let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            return !parents || parents.length === 0;
+        });
+        
+        let allTreeMembers = new Set();
+        for (let root of rootAncestors) {
+            const descendants = getDescendants(root);
+            descendants.forEach(d => allTreeMembers.add(d));
+        }
+        
+        if (allTreeMembers.size === 0) {
+            cluster.forEach(p => allTreeMembers.add(p));
+        }
+        
+        const members = Array.from(allTreeMembers);
+        
+        // Build generations for this cluster
         const depths = new Map();
         let maxDepth = 0;
         
-        for (let person of allMembers) {
+        for (let person of members) {
             const depth = getGenerationDepth(person);
             depths.set(person.id, depth);
             maxDepth = Math.max(maxDepth, depth);
         }
         
         const groups = new Map();
-        for (let person of allMembers) {
+        for (let person of members) {
             const depth = depths.get(person.id) || 0;
             if (!groups.has(depth)) groups.set(depth, []);
             groups.get(depth).push(person);
@@ -748,10 +815,22 @@
             }
         }
         
-        return result;
+        // Find family name
+        let familyName = "Unknown Family";
+        if (rootAncestors.length > 0 && rootAncestors[0].name) {
+            const nameParts = rootAncestors[0].name.split(' ');
+            familyName = nameParts[nameParts.length - 1] + " Family";
+        } else if (members.length > 0 && members[0].name) {
+            const nameParts = members[0].name.split(' ');
+            familyName = nameParts[nameParts.length - 1] + " Family";
+        }
+        
+        // Restore original DB
+        FAMILY_DB = originalDB;
+        
+        return { generations: result, familyName, memberCount: members.length };
     }
 
-    // Build lineage generations with proper order (you at the bottom, ancestors above)
     function buildLineageGenerations(ancestors) {
         if (!ancestors.length) return [];
         
@@ -784,7 +863,6 @@
             }
         }
         
-        // Get all depths and sort from highest (oldest ancestors) to lowest (selected person)
         const depths = Array.from(groups.keys()).sort((a, b) => b - a);
         const result = [];
         for (let depth of depths) {
@@ -805,7 +883,7 @@
         
         const person = findPersonByPartialName(searchTerm);
         if (!person) {
-            container.innerHTML = `<div style="text-align:center;padding:3rem;">🍂 No records found for "${escapeHtml(searchTerm)}"<br><br>💡 Try contributing your family using the "Contribute Your Family" tab!</div>`;
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🍂 No records found for "${escapeHtml(searchTerm)}"<br><br>💡 Try contributing your family using the "Add Your Details" tab!</div>`;
             return;
         }
         
@@ -823,13 +901,11 @@
         titleSpan.innerHTML = `📜 Lineage of ${escapeHtml(person.name)}`;
         
         let html = `<div class="family-tree">`;
-        // Start from the top (oldest ancestors)
         let generationCounter = 1;
         for (let idx = 0; idx < generations.length; idx++) {
             const level = generations[idx];
             if (level.length === 0) continue;
             
-            // Check if this is the last level (selected person)
             const isLastLevel = (idx === generations.length - 1);
             const labelText = isLastLevel ? `📍 Generation ${generationCounter} (You)` : `📍 Generation ${generationCounter}`;
             
@@ -854,38 +930,81 @@
         const container = document.getElementById("visualTreeContainer");
         const titleSpan = document.getElementById("treeTitle");
         
-        const generations = buildFullTreeGenerations();
+        // Find separate family clusters
+        const clusters = findFamilyClusters();
         
-        if (!generations || generations.length === 0 || generations.every(g => g.length === 0)) {
-            container.innerHTML = `<div style="text-align:center;padding:3rem;">🌱 Not enough data to build the complete family tree. Add more family members using the "Contribute Your Family" tab!</div>`;
+        if (clusters.length === 0 || clusters.every(c => c.length === 0)) {
+            container.innerHTML = `<div style="text-align:center;padding:3rem;">🌱 Not enough data to build the family tree. Add more family members using the "Add Your Details" tab!</div>`;
             return;
         }
         
-        titleSpan.innerHTML = `🌳 Complete Family Tree (All ${FAMILY_DB.people.length} Members)`;
-        
-        let html = `<div class="family-tree">`;
-        for (let idx = 0; idx < generations.length; idx++) {
-            const level = generations[idx];
-            if (level.length === 0) continue;
-            const generationNumber = idx + 1;
-            html += `<div class="gen-label">📍 Generation ${generationNumber}</div>`;
-            html += `<div class="generation">`;
-            for (let member of level) {
-                html += `<div class="tree-node" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
+        if (clusters.length === 1) {
+            // Single family - display normally
+            const family = getFamilyTreeForCluster(clusters[0]);
+            titleSpan.innerHTML = `🌳 Complete Family Tree - ${family.familyName} (${family.memberCount} members)`;
+            
+            let html = `<div class="family-tree">`;
+            for (let idx = 0; idx < family.generations.length; idx++) {
+                const level = family.generations[idx];
+                if (level.length === 0) continue;
+                const generationNumber = idx + 1;
+                const genLabel = generationNumber === 1 ? "👴👵 Oldest Generation" : `📍 Generation ${generationNumber}`;
+                html += `<div class="gen-label">${genLabel}</div>`;
+                html += `<div class="generation">`;
+                for (let member of level) {
+                    html += `<div class="tree-node" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
+                }
+                html += `</div>`;
+                if (idx < family.generations.length - 1) {
+                    html += `<div class="connector-line">▼</div>`;
+                }
             }
             html += `</div>`;
-            if (idx < generations.length - 1) {
-                html += `<div class="connector-line">▼</div>`;
+            container.innerHTML = html;
+            
+        } else {
+            // Multiple unrelated families - display separately
+            titleSpan.innerHTML = `🌳 Family Trees (${clusters.length} separate families found)`;
+            
+            let html = `<div style="display: flex; flex-direction: column; gap: 2rem;">`;
+            
+            for (let i = 0; i < clusters.length; i++) {
+                const cluster = clusters[i];
+                const family = getFamilyTreeForCluster(cluster);
+                
+                html += `<div class="family-separator">`;
+                html += `<h3 class="family-heading">🏠 ${family.familyName} (${family.memberCount} members)</h3>`;
+                html += `<div class="family-tree">`;
+                
+                for (let idx = 0; idx < family.generations.length; idx++) {
+                    const level = family.generations[idx];
+                    if (level.length === 0) continue;
+                    const generationNumber = idx + 1;
+                    const genLabel = generationNumber === 1 ? "👴👵 Oldest Generation" : `📍 Generation ${generationNumber}`;
+                    html += `<div class="gen-label">${genLabel}</div>`;
+                    html += `<div class="generation">`;
+                    for (let member of level) {
+                        html += `<div class="tree-node" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
+                    }
+                    html += `</div>`;
+                    if (idx < family.generations.length - 1) {
+                        html += `<div class="connector-line">▼</div>`;
+                    }
+                }
+                html += `</div></div>`;
             }
+            
+            html += `</div>`;
+            container.innerHTML = html;
         }
-        html += `</div>`;
-        container.innerHTML = html;
     }
 
     window.searchThisPerson = function(name) {
         document.getElementById('searchName').value = name;
         renderLineageView(name);
         document.getElementById('searchStatus').innerHTML = `🔍 Showing lineage for "${escapeHtml(name)}"`;
+        // Switch to view tab
+        document.querySelector('.tab-btn[data-tab="view"]').click();
     };
 
     function escapeHtml(str) {
