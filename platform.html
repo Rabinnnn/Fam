@@ -644,7 +644,7 @@
         return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     }
 
-    // Helper function to estimate generation level of a person
+    // Helper function to calculate generation level of a person
     function getPersonGenerationLevel(person) {
         let depth = 0;
         let current = person;
@@ -658,22 +658,26 @@
         return depth;
     }
     
-    // Helper function to validate parents are from same generation
+    // STRICT validation - parents MUST be from exact same generation
     async function validateParentsGeneration(fatherName, motherName) {
         if (!fatherName || !motherName) return { valid: true, message: '' };
         
         const father = findPersonByName(fatherName);
         const mother = findPersonByName(motherName);
         
+        // If either parent doesn't exist in DB yet, they will be added as new root ancestors
+        // In this case, both will be generation 0, so they will match
         if (!father || !mother) return { valid: true, message: '' };
         
         const fatherGen = getPersonGenerationLevel(father);
         const motherGen = getPersonGenerationLevel(mother);
         
-        if (Math.abs(fatherGen - motherGen) > 1) {
+        // STRICT: Must be exactly the same generation
+        if (fatherGen !== motherGen) {
+            const genNumber = fatherGen + 1;
             return { 
                 valid: false, 
-                message: `⚠️ Generation mismatch: ${father.name} is in generation ${fatherGen + 1}, but ${mother.name} is in generation ${motherGen + 1}. Parents should be from the same generation.` 
+                message: `❌ Generation mismatch: "${father.name}" is in generation ${fatherGen + 1}, but "${mother.name}" is in generation ${motherGen + 1}. Parents must be from the SAME generation (both should be in generation ${genNumber} if they are your parents).` 
             };
         }
         
@@ -1362,7 +1366,7 @@
             return;
         }
         
-        // Validate parents are from same generation
+        // STRICT validation: Parents must be from the SAME generation
         if (fatherName && motherName) {
             const generationValidation = await validateParentsGeneration(fatherName, motherName);
             if (!generationValidation.valid) {
