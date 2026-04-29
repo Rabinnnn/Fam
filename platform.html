@@ -339,6 +339,39 @@
             border-color: #c2894b;
         }
 
+        .parent-selector {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .parent-selector select, .parent-selector input {
+            flex: 2;
+            min-width: 200px;
+        }
+        
+        .toggle-mode-btn {
+            background: #c2894b;
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        
+        .toggle-mode-btn:hover {
+            background: #a06e3a;
+        }
+        
+        .mode-indicator {
+            font-size: 0.7rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+
         .submit-btn {
             background: #5a3e2b;
             color: white;
@@ -464,15 +497,35 @@
                     </select>
                 </div>
                 
+                <!-- Father Field with Selector -->
                 <div class="form-group">
                     <label>Father's Full Name</label>
-                    <input type="text" id="fatherName" placeholder="First Name Last Name">
+                    <div id="fatherContainer">
+                        <div class="parent-selector">
+                            <select id="fatherSelect" style="display: none;">
+                                <option value="">-- Select Father from existing records --</option>
+                            </select>
+                            <input type="text" id="fatherName" placeholder="First Name Last Name">
+                            <button type="button" class="toggle-mode-btn" onclick="toggleParentMode('father')">📋 Use Existing</button>
+                        </div>
+                    </div>
+                    <div class="mode-indicator" id="fatherModeIndicator">✏️ Manual entry mode (type any name)</div>
                     <div class="info-note">If known, please include both first and last name</div>
                 </div>
                 
+                <!-- Mother Field with Selector -->
                 <div class="form-group">
                     <label>Mother's Full Name</label>
-                    <input type="text" id="motherName" placeholder="First Name Last Name">
+                    <div id="motherContainer">
+                        <div class="parent-selector">
+                            <select id="motherSelect" style="display: none;">
+                                <option value="">-- Select Mother from existing records --</option>
+                            </select>
+                            <input type="text" id="motherName" placeholder="First Name Last Name">
+                            <button type="button" class="toggle-mode-btn" onclick="toggleParentMode('mother')">📋 Use Existing</button>
+                        </div>
+                    </div>
+                    <div class="mode-indicator" id="motherModeIndicator">✏️ Manual entry mode (type any name)</div>
                     <div class="info-note">If known, please include both first and last name</div>
                 </div>
                 
@@ -484,7 +537,7 @@
         
         <div class="info-note" style="margin-top: 1rem;">
             💡 <strong>How it works:</strong> When you add yourself, we'll also add your parents if they're not already in the tree. 
-            This helps connect families together! All names require both first and last name for consistent searching.
+            You can select existing parents from the dropdown or manually enter new ones.
         </div>
     </div>
 
@@ -550,6 +603,9 @@
     let currentUser = null;
     let isAdmin = false;
     let FAMILY_DB = { people: [] };
+    
+    let fatherMode = 'manual';
+    let motherMode = 'manual';
 
     function showError(elementId, message) {
         const errorDiv = document.getElementById(elementId);
@@ -588,6 +644,122 @@
         return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     }
 
+    // Helper function to estimate generation level of a person
+    function getPersonGenerationLevel(person) {
+        let depth = 0;
+        let current = person;
+        let parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
+        while(parents && parents.length > 0) {
+            depth++;
+            current = FAMILY_DB.people.find(p => p.id === parents[0]);
+            if(!current) break;
+            parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
+        }
+        return depth;
+    }
+    
+    // Helper function to validate parents are from same generation
+    async function validateParentsGeneration(fatherName, motherName) {
+        if (!fatherName || !motherName) return { valid: true, message: '' };
+        
+        const father = findPersonByName(fatherName);
+        const mother = findPersonByName(motherName);
+        
+        if (!father || !mother) return { valid: true, message: '' };
+        
+        const fatherGen = getPersonGenerationLevel(father);
+        const motherGen = getPersonGenerationLevel(mother);
+        
+        if (Math.abs(fatherGen - motherGen) > 1) {
+            return { 
+                valid: false, 
+                message: `⚠️ Generation mismatch: ${father.name} is in generation ${fatherGen + 1}, but ${mother.name} is in generation ${motherGen + 1}. Parents should be from the same generation.` 
+            };
+        }
+        
+        return { valid: true, message: '' };
+    }
+
+    function populateParentDropdowns() {
+        const peopleNames = FAMILY_DB.people.map(p => p.name).sort();
+        
+        const fatherSelect = document.getElementById('fatherSelect');
+        const motherSelect = document.getElementById('motherSelect');
+        
+        fatherSelect.innerHTML = '<option value="">-- Select Father from existing records --</option>';
+        motherSelect.innerHTML = '<option value="">-- Select Mother from existing records --</option>';
+        
+        peopleNames.forEach(name => {
+            const fatherOption = document.createElement('option');
+            fatherOption.value = name;
+            fatherOption.textContent = name;
+            fatherSelect.appendChild(fatherOption);
+            
+            const motherOption = document.createElement('option');
+            motherOption.value = name;
+            motherOption.textContent = name;
+            motherSelect.appendChild(motherOption);
+        });
+    }
+
+    function toggleParentMode(parent) {
+        const selectElement = document.getElementById(`${parent}Select`);
+        const inputElement = document.getElementById(`${parent}Name`);
+        const toggleBtn = document.querySelector(`#${parent}Container .toggle-mode-btn`);
+        const modeIndicator = document.getElementById(`${parent}ModeIndicator`);
+        
+        if (parent === 'father') {
+            if (fatherMode === 'manual') {
+                selectElement.style.display = 'block';
+                inputElement.style.display = 'none';
+                inputElement.value = '';
+                toggleBtn.textContent = '✏️ Enter Manually';
+                modeIndicator.innerHTML = '📋 Select mode - choose from existing records';
+                fatherMode = 'select';
+            } else {
+                selectElement.style.display = 'none';
+                inputElement.style.display = 'block';
+                selectElement.value = '';
+                toggleBtn.textContent = '📋 Use Existing';
+                modeIndicator.innerHTML = '✏️ Manual entry mode (type any name)';
+                fatherMode = 'manual';
+            }
+        } else if (parent === 'mother') {
+            if (motherMode === 'manual') {
+                selectElement.style.display = 'block';
+                inputElement.style.display = 'none';
+                inputElement.value = '';
+                toggleBtn.textContent = '✏️ Enter Manually';
+                modeIndicator.innerHTML = '📋 Select mode - choose from existing records';
+                motherMode = 'select';
+            } else {
+                selectElement.style.display = 'none';
+                inputElement.style.display = 'block';
+                selectElement.value = '';
+                toggleBtn.textContent = '📋 Use Existing';
+                modeIndicator.innerHTML = '✏️ Manual entry mode (type any name)';
+                motherMode = 'manual';
+            }
+        }
+    }
+
+    function getParentName(parent) {
+        if (parent === 'father') {
+            if (fatherMode === 'select') {
+                return document.getElementById('fatherSelect').value;
+            } else {
+                return document.getElementById('fatherName').value.trim();
+            }
+        } else if (parent === 'mother') {
+            if (motherMode === 'select') {
+                return document.getElementById('motherSelect').value;
+            } else {
+                return document.getElementById('motherName').value.trim();
+            }
+        }
+        return '';
+    }
+
     async function loadPeople() {
         try {
             console.log('Loading people from Supabase...');
@@ -607,6 +779,9 @@
             const data = await response.json();
             FAMILY_DB.people = data;
             console.log(`✅ Loaded ${data.length} people`);
+            
+            populateParentDropdowns();
+            
             return data;
         } catch (error) {
             console.error('❌ Load error:', error);
@@ -723,7 +898,6 @@
         return maxDepth;
     }
 
-    // Find separate family clusters
     function findFamilyClusters() {
         const adjacency = new Map();
         FAMILY_DB.people.forEach(person => {
@@ -774,7 +948,6 @@
         return clusters;
     }
 
-    // Build tree for a single family cluster
     function getFamilyTreeForCluster(cluster) {
         const originalDB = FAMILY_DB;
         FAMILY_DB = { people: cluster };
@@ -833,7 +1006,6 @@
         return { generations: result, familyName, memberCount: members.length, depths };
     }
 
-    // IMPROVED EXPORT FUNCTION - Organized by Family, Generation, Relationship
     function exportToSpreadsheet() {
         if (!FAMILY_DB.people || FAMILY_DB.people.length === 0) {
             showError('contributeErrorMsg', 'No data to export. Add some family members first!');
@@ -848,7 +1020,6 @@
         
         let csvRows = [];
         
-        // Add header information
         csvRows.push('# ANCESTRAL THREADS - FAMILY TREE EXPORT');
         csvRows.push(`# Generated: ${new Date().toLocaleString()}`);
         csvRows.push(`# Total Families: ${clusters.length}`);
@@ -856,7 +1027,6 @@
         csvRows.push('#');
         csvRows.push('');
         
-        // Process each family separately
         clusters.forEach((cluster, clusterIndex) => {
             const familyData = getFamilyTreeForCluster(cluster);
             const familyLetter = String.fromCharCode(65 + clusterIndex);
@@ -866,10 +1036,8 @@
             csvRows.push(`"Total members in this family: ${familyData.memberCount}"`);
             csvRows.push('');
             
-            // Create the main data table
             csvRows.push('"Family","Generation","Relationship Type","Full Name","Gender","Father","Mother","Children Count"');
             
-            // Get generation depths for sorting
             const membersWithDepth = [];
             cluster.forEach(person => {
                 let depth = 0;
@@ -882,7 +1050,6 @@
                     parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
                 }
                 
-                // Determine relationship type
                 let relationshipType = "";
                 if (depth === 0) relationshipType = "Root Ancestor / Founder";
                 else if (depth === 1) relationshipType = "Parent / 1st Generation Descendant";
@@ -890,18 +1057,15 @@
                 else if (depth === 3) relationshipType = "Great-Grandchild / 3rd Generation Descendant";
                 else relationshipType = `${depth}th Generation Descendant`;
                 
-                // Count children
                 const childrenCount = cluster.filter(p => {
                     let pParents = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
                     return pParents && pParents.includes(person.id);
                 }).length;
                 
-                // Get parents' names
                 let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
                 let fatherName = parentsArray && parentsArray[0] ? (parentNameMap.get(parentsArray[0]) || 'Unknown') : '';
                 let motherName = parentsArray && parentsArray[1] ? (parentNameMap.get(parentsArray[1]) || 'Unknown') : '';
                 
-                // Determine generation label for display
                 let generationLabel = "";
                 if (depth === 0) generationLabel = "Generation 1 (Root)";
                 else if (depth === 1) generationLabel = "Generation 2";
@@ -921,10 +1085,8 @@
                 });
             });
             
-            // Sort by generation depth (oldest first)
             membersWithDepth.sort((a, b) => a.generationDepth - b.generationDepth);
             
-            // Add rows to CSV
             membersWithDepth.forEach(member => {
                 csvRows.push(`"${familyLetter}: ${familyName}","${member.generationLabel}","${member.relationshipType}","${member.name}","${member.gender}","${member.father}","${member.mother}","${member.childrenCount}"`);
             });
@@ -933,7 +1095,6 @@
             csvRows.push('');
         });
         
-        // Add a summary sheet at the end
         csvRows.push('"=== SUMMARY: All Families Overview ==="');
         csvRows.push('"Family","Family Letter","Total Members","Root Ancestors"');
         
@@ -954,10 +1115,8 @@
             csvRows.push(`"${familyName}","${familyLetter}","${cluster.length}","${rootNames}"`);
         });
         
-        // Create CSV content
         let csvContent = csvRows.join('\n');
         
-        // Create download link
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
@@ -1188,8 +1347,8 @@
         
         const userName = document.getElementById('userFullName').value.trim();
         const userGender = document.getElementById('userGender').value;
-        const fatherName = document.getElementById('fatherName').value.trim();
-        const motherName = document.getElementById('motherName').value.trim();
+        const fatherName = getParentName('father');
+        const motherName = getParentName('mother');
         
         const userValidation = validateFullName(userName);
         if (!userValidation.valid) {
@@ -1201,6 +1360,15 @@
         if (existingUser) {
             showError('contributeErrorMsg', `"${userName}" is already in the family tree! Try searching for them instead.`);
             return;
+        }
+        
+        // Validate parents are from same generation
+        if (fatherName && motherName) {
+            const generationValidation = await validateParentsGeneration(fatherName, motherName);
+            if (!generationValidation.valid) {
+                showError('contributeErrorMsg', generationValidation.message);
+                return;
+            }
         }
         
         showSuccess('contributeSuccessMsg', 'Adding your information to the family tree...');
@@ -1245,8 +1413,20 @@
             if (fatherName) message += ` 👨 Father: ${fatherName}`;
             if (motherName) message += ` 👩 Mother: ${motherName}`;
             
-            showSuccess('contributeSuccessMsg', message);
+            if (fatherMode === 'select') {
+                toggleParentMode('father');
+            }
+            if (motherMode === 'select') {
+                toggleParentMode('mother');
+            }
+            
             document.getElementById('contributeForm').reset();
+            document.getElementById('fatherName').value = '';
+            document.getElementById('motherName').value = '';
+            document.getElementById('fatherSelect').value = '';
+            document.getElementById('motherSelect').value = '';
+            
+            showSuccess('contributeSuccessMsg', message);
             
             if (isAdmin) await updateAdminPanel();
             
@@ -1337,6 +1517,8 @@
         
         try {
             await loadPeople();
+            
+            window.toggleParentMode = toggleParentMode;
             
             if (isAdmin) await updateAdminPanel();
             
