@@ -674,10 +674,9 @@
         
         // STRICT: Must be exactly the same generation
         if (fatherGen !== motherGen) {
-            const genNumber = fatherGen + 1;
             return { 
                 valid: false, 
-                message: `❌ Generation mismatch: "${father.name}" is in generation ${fatherGen + 1}, but "${mother.name}" is in generation ${motherGen + 1}. Parents must be from the SAME generation (both should be in generation ${genNumber} if they are your parents).` 
+                message: `❌ Generation mismatch: "${father.name}" is in generation ${fatherGen + 1}, but "${mother.name}" is in generation ${motherGen + 1}. Parents must be from the SAME generation.` 
             };
         }
         
@@ -1366,7 +1365,15 @@
             return;
         }
         
-        // STRICT validation: Parents must be from the SAME generation
+        // FOR REGULAR USERS: Both parents must be provided
+        if (!isAdmin) {
+            if (!fatherName || !motherName) {
+                showError('contributeErrorMsg', '⚠️ Both father and mother names are required. Please provide both parents\' information.');
+                return;
+            }
+        }
+        
+        // Strict validation: Parents must be from the SAME generation (only if both provided)
         if (fatherName && motherName) {
             const generationValidation = await validateParentsGeneration(fatherName, motherName);
             if (!generationValidation.valid) {
@@ -1416,6 +1423,7 @@
             let message = `✅ Successfully added "${userName}" to the family tree!`;
             if (fatherName) message += ` 👨 Father: ${fatherName}`;
             if (motherName) message += ` 👩 Mother: ${motherName}`;
+            if (!fatherName && !motherName && isAdmin) message += ` (Added as root ancestor)`;
             
             if (fatherMode === 'select') {
                 toggleParentMode('father');
