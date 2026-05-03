@@ -27,7 +27,6 @@
             overflow: hidden;
         }
 
-        /* Mobile-first header */
         .main-header {
             background: linear-gradient(135deg, #5a3e2b 0%, #3e2a1c 100%);
             padding: 1rem;
@@ -86,7 +85,6 @@
             font-size: 0.8rem;
         }
 
-        /* Mobile-first tabs - horizontal scroll on mobile */
         .tabs {
             display: flex;
             gap: 0.25rem;
@@ -131,7 +129,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Mobile-first search section */
         .search-section {
             background: #fef7ed;
             border-radius: 1rem;
@@ -261,7 +258,6 @@
             color: #c2a075;
         }
 
-        /* Admin stats - responsive grid */
         .admin-stats {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 1rem;
@@ -289,7 +285,6 @@
             font-size: 0.7rem;
         }
 
-        /* Names list - responsive grid */
         .names-list {
             background: white;
             border-radius: 1rem;
@@ -339,7 +334,6 @@
             font-size: 0.7rem;
         }
 
-        /* Contribute section - mobile friendly */
         .contribute-section {
             background: white;
             border-radius: 1rem;
@@ -486,7 +480,6 @@
             font-size: 1rem;
         }
 
-        /* Tablet and Desktop breakpoints */
         @media (min-width: 600px) {
             body {
                 padding: 1rem;
@@ -583,7 +576,6 @@
             }
         }
 
-        /* Touch-friendly adjustments */
         @media (hover: none) and (pointer: coarse) {
             .tab-btn, .tree-node, .delete-btn, .submit-btn, .toggle-mode-btn {
                 cursor: default;
@@ -617,7 +609,6 @@
         <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
     </div>
 
-    <!-- Contribute Tab -->
     <div id="contributeTab" class="tab-content active">
         <div class="contribute-section">
             <h3>🌱 Add Yourself to the Family Tree</h3>
@@ -639,7 +630,6 @@
                     </select>
                 </div>
                 
-                <!-- Father Field with Selector -->
                 <div class="form-group">
                     <label>Father's Full Name</label>
                     <div id="fatherContainer">
@@ -655,7 +645,6 @@
                     <div class="info-note">If known, please include both first and last name</div>
                 </div>
                 
-                <!-- Mother Field with Selector -->
                 <div class="form-group">
                     <label>Mother's Full Name</label>
                     <div id="motherContainer">
@@ -683,7 +672,6 @@
         </div>
     </div>
 
-    <!-- View Lineage Tab -->
     <div id="viewTab" class="tab-content">
         <div class="search-section">
             <form id="searchForm" class="search-form">
@@ -711,7 +699,6 @@
         </div>
     </div>
 
-    <!-- Admin Panel Tab -->
     <div id="adminTab" class="tab-content">
         <div class="admin-stats">
             <div class="stat-card">
@@ -1146,6 +1133,7 @@
         return { generations: result, familyName, memberCount: members.length, depths };
     }
 
+    // SIMPLIFIED EXPORT FUNCTION - Just families and members
     function exportToSpreadsheet() {
         if (!FAMILY_DB.people || FAMILY_DB.people.length === 0) {
             showError('contributeErrorMsg', 'No data to export. Add some family members first!');
@@ -1153,13 +1141,10 @@
         }
         
         const clusters = findFamilyClusters();
-        const parentNameMap = new Map();
-        FAMILY_DB.people.forEach(person => {
-            parentNameMap.set(person.id, person.name);
-        });
         
         let csvRows = [];
         
+        // Header
         csvRows.push('# ANCESTRAL THREADS - FAMILY TREE EXPORT');
         csvRows.push(`# Generated: ${new Date().toLocaleString()}`);
         csvRows.push(`# Total Families: ${clusters.length}`);
@@ -1167,96 +1152,68 @@
         csvRows.push('#');
         csvRows.push('');
         
-        clusters.forEach((cluster, clusterIndex) => {
-            const familyData = getFamilyTreeForCluster(cluster);
-            const familyLetter = String.fromCharCode(65 + clusterIndex);
-            const familyName = familyData.familyName;
-            
-            csvRows.push(`"=== FAMILY ${familyLetter}: ${familyName} ==="`);
-            csvRows.push(`"Total members in this family: ${familyData.memberCount}"`);
-            csvRows.push('');
-            
-            csvRows.push('"Family","Generation","Relationship Type","Full Name","Gender","Father","Mother","Children Count"');
-            
-            const membersWithDepth = [];
-            cluster.forEach(person => {
-                let depth = 0;
-                let current = person;
-                let parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
-                while(parents && parents.length > 0) {
-                    depth++;
-                    current = cluster.find(p => p.id === parents[0]);
-                    if(!current) break;
-                    parents = typeof current.parents === 'string' ? JSON.parse(current.parents) : current.parents;
-                }
-                
-                let relationshipType = "";
-                if (depth === 0) relationshipType = "Root Ancestor / Founder";
-                else if (depth === 1) relationshipType = "Parent / 1st Generation Descendant";
-                else if (depth === 2) relationshipType = "Grandchild / 2nd Generation Descendant";
-                else if (depth === 3) relationshipType = "Great-Grandchild / 3rd Generation Descendant";
-                else relationshipType = `${depth}th Generation Descendant`;
-                
-                const childrenCount = cluster.filter(p => {
-                    let pParents = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
-                    return pParents && pParents.includes(person.id);
-                }).length;
-                
-                let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
-                let fatherName = parentsArray && parentsArray[0] ? (parentNameMap.get(parentsArray[0]) || 'Unknown') : '';
-                let motherName = parentsArray && parentsArray[1] ? (parentNameMap.get(parentsArray[1]) || 'Unknown') : '';
-                
-                let generationLabel = "";
-                if (depth === 0) generationLabel = "Generation 1 (Root)";
-                else if (depth === 1) generationLabel = "Generation 2";
-                else if (depth === 2) generationLabel = "Generation 3";
-                else if (depth === 3) generationLabel = "Generation 4";
-                else generationLabel = `Generation ${depth + 1}`;
-                
-                membersWithDepth.push({
-                    generationDepth: depth,
-                    generationLabel: generationLabel,
-                    relationshipType: relationshipType,
-                    name: person.name,
-                    gender: person.gender || 'unknown',
-                    father: fatherName,
-                    mother: motherName,
-                    childrenCount: childrenCount
-                });
-            });
-            
-            membersWithDepth.sort((a, b) => a.generationDepth - b.generationDepth);
-            
-            membersWithDepth.forEach(member => {
-                csvRows.push(`"${familyLetter}: ${familyName}","${member.generationLabel}","${member.relationshipType}","${member.name}","${member.gender}","${member.father}","${member.mother}","${member.childrenCount}"`);
-            });
-            
-            csvRows.push('');
-            csvRows.push('');
-        });
-        
-        csvRows.push('"=== SUMMARY: All Families Overview ==="');
-        csvRows.push('"Family","Family Letter","Total Members","Root Ancestors"');
-        
+        // Process each family
         clusters.forEach((cluster, clusterIndex) => {
             const familyLetter = String.fromCharCode(65 + clusterIndex);
-            let rootAncestors = cluster.filter(person => {
+            
+            // Find family name
+            let familyName = "Unknown Family";
+            const rootAncestors = cluster.filter(person => {
                 let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
                 return !parents || parents.length === 0;
             });
-            const rootNames = rootAncestors.map(r => r.name).join(', ');
             
-            let familyName = "Unknown";
             if (rootAncestors.length > 0 && rootAncestors[0].name) {
                 const nameParts = rootAncestors[0].name.split(' ');
                 familyName = nameParts[nameParts.length - 1] + " Family";
+            } else if (cluster.length > 0 && cluster[0].name) {
+                const nameParts = cluster[0].name.split(' ');
+                familyName = nameParts[nameParts.length - 1] + " Family";
             }
             
-            csvRows.push(`"${familyName}","${familyLetter}","${cluster.length}","${rootNames}"`);
+            // Family header
+            csvRows.push(`"=== FAMILY ${familyLetter}: ${familyName} ==="`);
+            csvRows.push(`"Total members: ${cluster.length}"`);
+            csvRows.push('');
+            
+            // Simple table headers - only Name and Gender
+            csvRows.push('"Full Name","Gender"');
+            
+            // List all members (alphabetically)
+            const sortedMembers = [...cluster].sort((a, b) => a.name.localeCompare(b.name));
+            sortedMembers.forEach(person => {
+                csvRows.push(`"${person.name}","${person.gender || 'unknown'}"`);
+            });
+            
+            csvRows.push('');
+            csvRows.push('');
         });
         
-        let csvContent = csvRows.join('\n');
+        // Summary at the end
+        csvRows.push('"=== SUMMARY ==="');
+        csvRows.push('"Family","Total Members"');
+        clusters.forEach((cluster, clusterIndex) => {
+            const familyLetter = String.fromCharCode(65 + clusterIndex);
+            let familyName = "Unknown";
+            
+            const rootAncestors = cluster.filter(person => {
+                let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+                return !parents || parents.length === 0;
+            });
+            
+            if (rootAncestors.length > 0 && rootAncestors[0].name) {
+                const nameParts = rootAncestors[0].name.split(' ');
+                familyName = nameParts[nameParts.length - 1] + " Family";
+            } else if (cluster.length > 0 && cluster[0].name) {
+                const nameParts = cluster[0].name.split(' ');
+                familyName = nameParts[nameParts.length - 1] + " Family";
+            }
+            
+            csvRows.push(`"${familyLetter}: ${familyName}","${cluster.length}"`);
+        });
         
+        // Create and download CSV
+        let csvContent = csvRows.join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
@@ -1351,9 +1308,7 @@
             html += `<div class="gen-label">${labelText}</div>`;
             html += `<div class="generation">`;
             for (let member of level) {
-                const isCurrentPerson = (member.id === person.id);
-                const nodeClass = isCurrentPerson ? 'tree-node current-person' : 'tree-node';
-                html += `<div class="${nodeClass}" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
+                html += `<div class="tree-node" onclick="searchThisPerson('${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong></div>`;
             }
             html += `</div>`;
             if (idx < generations.length - 1) {
@@ -1502,7 +1457,6 @@
             return;
         }
         
-        // FOR REGULAR USERS: Both parents must be provided
         if (!isAdmin) {
             if (!fatherName || !motherName) {
                 showError('contributeErrorMsg', '⚠️ Both father and mother names are required. Please provide both parents\' information.');
@@ -1510,7 +1464,6 @@
             }
         }
         
-        // Strict validation: Parents must be from the SAME generation (only if both provided)
         if (fatherName && motherName) {
             const generationValidation = await validateParentsGeneration(fatherName, motherName);
             if (!generationValidation.valid) {
