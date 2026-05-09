@@ -12,6 +12,12 @@
             font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
         }
 
+        /* FIX 1: overflow-x on html AND body prevents pseudo-elements
+           and fixed-position children from triggering horizontal scroll */
+        html {
+            overflow-x: hidden;
+        }
+
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -23,24 +29,33 @@
             overflow-x: hidden;
         }
 
+        /* FIX 2: Clamp the decorative emojis so they never push
+           the layout wider than the viewport */
         body::before {
             content: "🌳";
             position: absolute;
-            font-size: 200px;
+            font-size: clamp(100px, 30vw, 200px);
             opacity: 0.05;
-            bottom: -50px;
-            right: -50px;
+            bottom: -30px;
+            right: -20px;
             pointer-events: none;
+            /* prevent this pseudo-element from creating overflow */
+            max-width: 50vw;
+            overflow: hidden;
+            line-height: 1;
         }
 
         body::after {
             content: "📜";
             position: absolute;
-            font-size: 180px;
+            font-size: clamp(90px, 28vw, 180px);
             opacity: 0.05;
-            top: -50px;
-            left: -50px;
+            top: -30px;
+            left: -20px;
             pointer-events: none;
+            max-width: 50vw;
+            overflow: hidden;
+            line-height: 1;
         }
 
         .login-container {
@@ -264,18 +279,26 @@
             z-index: 1000;
         }
 
+        /* FIX 3: Google Translate widget — constrain width and
+           shift it left enough on very small screens so it never
+           overhangs the right edge */
+        #google_translate_element {
+            position: fixed;
+            bottom: 10px;
+            /* FIX: use left instead of right on small screens via the media query below */
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            max-width: calc(100vw - 20px);   /* never wider than viewport */
+        }
+
         /* Tablet and Desktop Styles */
         @media (min-width: 480px) {
             body {
                 padding: 1.5rem;
-            }
-
-            body::before {
-                font-size: 300px;
-            }
-
-            body::after {
-                font-size: 250px;
             }
 
             .login-card {
@@ -401,6 +424,14 @@
                 font-size: 0.75rem;
                 padding: 0.7rem;
             }
+
+            /* On very small screens pin the translate widget to the left
+               so it doesn't overflow the right edge */
+            #google_translate_element {
+                right: auto;
+                left: 10px;
+                bottom: 40px; /* clear the admin badge */
+            }
         }
 
         /* Landscape mode on phones */
@@ -508,8 +539,9 @@
         </div>
     </div>
     <div class="admin-badge">🔐 Secure Authentication</div>
+
 <!-- Google Translate Widget -->
-<div id="google_translate_element" style="position: fixed; bottom: 10px; right: 10px; z-index: 1000; background: white; padding: 5px 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);"></div>
+<div id="google_translate_element"></div>
 
 <script type="text/javascript">
 function googleTranslateElementInit() {
