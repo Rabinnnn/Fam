@@ -414,81 +414,130 @@
             showError('contributeErrorMsg', 'No data to export. Add some family members first!');
             return;
         }
-        
+
         const clusters = findFamilyClusters();
-        
+
+        function getFatherName(person) {
+            const parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            if (!parentsArray || parentsArray.length === 0) return '';
+            for (const pid of parentsArray) {
+                const p = FAMILY_DB.people.find(x => x.id === pid);
+                if (p && p.gender === 'male') return p.name;
+            }
+            const first = FAMILY_DB.people.find(x => x.id === parentsArray[0]);
+            return first ? first.name : '';
+        }
+
+        function getMotherName(person) {
+            const parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            if (!parentsArray || parentsArray.length === 0) return '';
+            for (const pid of parentsArray) {
+                const p = FAMILY_DB.people.find(x => x.id === pid);
+                if (p && p.gender === 'female') return p.name;
+            }
+            if (parentsArray.length > 1) {
+                const second = FAMILY_DB.people.find(x => x.id === parentsArray[1]);
+                return second ? second.name : '';
+            }
+            return '';
+        }
+
+        function getChildrenNames(person) {
+            return FAMILY_DB.people
+                .filter(p => {
+                    const pArr = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
+                    return pArr && pArr.includes(person.id);
+                })
+                .map(p => p.name)
+                .sort()
+                .join('; ');
+        }
+
+        function getGenerationNumber(person) {
+            return getPersonGenerationLevel(person) + 1;
+        }
+
         let csvRows = [];
-        
-        // Header
+
         csvRows.push('# ANCESTRAL THREADS - FAMILY TREE EXPORT');
         csvRows.push(`# Generated: ${new Date().toLocaleString()}`);
         csvRows.push(`# Total Families: ${clusters.length}`);
         csvRows.push(`# Total Members: ${FAMILY_DB.people.length}`);
         csvRows.push('#');
+        csvRows.push('# HOW TO READ THIS FILE:');
+        csvRows.push('#   - Each section is a separate family group');
+        csvRows.push('#   - Generation 1 = oldest ancestors, higher numbers = newer generations');
+        csvRows.push('#   - Multiple children are separated by semicolons');
         csvRows.push('');
-        
-        // Process each family
+
         clusters.forEach((cluster, clusterIndex) => {
             const familyLetter = String.fromCharCode(65 + clusterIndex);
-            
-            // Find family name
-            let familyName = "Unknown Family";
+
+            let familyName = 'Unknown Family';
             const rootAncestors = cluster.filter(person => {
-                let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+                const parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
                 return !parents || parents.length === 0;
             });
-            
             if (rootAncestors.length > 0 && rootAncestors[0].name) {
                 const nameParts = rootAncestors[0].name.split(' ');
-                familyName = nameParts[nameParts.length - 1] + " Family";
+                familyName = nameParts[nameParts.length - 1] + ' Family';
             } else if (cluster.length > 0 && cluster[0].name) {
                 const nameParts = cluster[0].name.split(' ');
-                familyName = nameParts[nameParts.length - 1] + " Family";
+                familyName = nameParts[nameParts.length - 1] + ' Family';
             }
-            
-            // Family header
-            csvRows.push(`"=== FAMILY ${familyLetter}: ${familyName} ==="`);
-            csvRows.push(`"Total members: ${cluster.length}"`);
+
+            csvRows.push(`"=== FAMILY ${familyLetter}: ${familyName} (${cluster.length} members) ==="`);
             csvRows.push('');
-            
-            // Simple table headers - only Name and Gender
-            csvRows.push('"Full Name","Gender"');
-            
-            // List all members (alphabetically)
-            const sortedMembers = [...cluster].sort((a, b) => a.name.localeCompare(b.name));
+            csvRows.push('"Generation","Full Name","Gender","Father","Mother","Children"');
+
+            const sortedMembers = [...cluster].sort((a, b) => {
+                const genDiff = getGenerationNumber(a) - getGenerationNumber(b);
+                if (genDiff !== 0) return genDiff;
+                return a.name.localeCompare(b.name);
+            });
+
+            let lastGen = null;
             sortedMembers.forEach(person => {
-                csvRows.push(`"${person.name}","${person.gender || 'unknown'}"`);
+                const gen = getGenerationNumber(person);
+                const gender   = person.gender ? person.gender.charAt(0).toUpperCase() + person.gender.slice(1) : 'Unknown';
+                const father   = getFatherName(person);
+                const mother   = getMotherName(person);
+                const children = getChildrenNames(person);
+
+                if (lastGen !== null && gen !== lastGen) {
+                    csvRows.push('');
+                }
+                lastGen = gen;
+
+                csvRows.push(`"Gen ${gen}","${person.name}","${gender}","${father}","${mother}","${children}"`);
             });
-            
+
             csvRows.push('');
             csvRows.push('');
         });
-        
-        // Summary at the end
+
         csvRows.push('"=== SUMMARY ==="');
-        csvRows.push('"Family","Total Members"');
+        csvRows.push('"Family","Members","Generations"');
         clusters.forEach((cluster, clusterIndex) => {
             const familyLetter = String.fromCharCode(65 + clusterIndex);
-            let familyName = "Unknown";
-            
-            const rootAncestors = cluster.filter(person => {
-                let parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
-                return !parents || parents.length === 0;
+            let familyName = 'Unknown';
+            const roots = cluster.filter(p => {
+                const pa = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
+                return !pa || pa.length === 0;
             });
-            
-            if (rootAncestors.length > 0 && rootAncestors[0].name) {
-                const nameParts = rootAncestors[0].name.split(' ');
-                familyName = nameParts[nameParts.length - 1] + " Family";
-            } else if (cluster.length > 0 && cluster[0].name) {
-                const nameParts = cluster[0].name.split(' ');
-                familyName = nameParts[nameParts.length - 1] + " Family";
+            if (roots.length > 0) {
+                const parts = roots[0].name.split(' ');
+                familyName = parts[parts.length - 1] + ' Family';
+            } else if (cluster.length > 0) {
+                const parts = cluster[0].name.split(' ');
+                familyName = parts[parts.length - 1] + ' Family';
             }
-            
-            csvRows.push(`"${familyLetter}: ${familyName}","${cluster.length}"`);
+
+            const maxGen = Math.max(...cluster.map(p => getPersonGenerationLevel(p) + 1));
+            csvRows.push(`"${familyLetter}: ${familyName}","${cluster.length}","${maxGen}"`);
         });
-        
-        // Create and download CSV
-        let csvContent = csvRows.join('\n');
+
+        const csvContent = csvRows.join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
@@ -498,7 +547,7 @@
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        
+
         showSuccess('contributeSuccessMsg', `Exported ${FAMILY_DB.people.length} family members across ${clusters.length} families!`);
     }
 
