@@ -11,8 +11,7 @@ let FAMILY_DB = { people: [] };
 let fatherMode = 'manual';
 let motherMode = 'manual';
 
-// Store who created each person (in localStorage for now - would need a 'createdBy' column in Supabase for production)
-// For now, we'll track in a separate object in localStorage
+// Store who created each person
 let personOwners = {};
 
 function loadPersonOwners() {
@@ -225,7 +224,6 @@ async function addPersonToDB(person) {
             throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
         
-        // Store ownership
         if (!personOwners[person.id]) {
             personOwners[person.id] = currentUser;
             savePersonOwners();
@@ -274,7 +272,6 @@ async function deletePersonFromDB(personId) {
         
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
-        // Remove ownership
         delete personOwners[personId];
         savePersonOwners();
         
@@ -312,7 +309,7 @@ function showEditModal(person) {
                 <h3 style="margin-bottom: 1rem;">✏️ Edit ${escapeHtml(person.name)}</h3>
                 <div class="form-group">
                     <label>Full Name</label>
-                    <input type="text" id="editName" value="${escapeHtml(person.name)}" class="form-control" style="width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:0.5rem;">
+                    <input type="text" id="editName" value="${escapeHtml(person.name)}" style="width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:0.5rem;">
                 </div>
                 <div class="form-group">
                     <label>Gender</label>
@@ -324,7 +321,7 @@ function showEditModal(person) {
                 </div>
                 <div class="form-group">
                     <label>Date of Birth</label>
-                    <input type="date" id="editDob" value="${person.dob || ''}" style="width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:0.5rem;">
+                    <input type="date" id="editDob" value="${person.dob || ''}" style="width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:0.5rem; cursor:pointer;">
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
                     <button onclick="saveEdit('${person.id}')" class="submit-btn" style="flex:1;">Save Changes</button>
@@ -334,11 +331,18 @@ function showEditModal(person) {
         </div>
     `;
     
-    // Remove existing modal if any
     const existingModal = document.getElementById('editModal');
     if (existingModal) existingModal.remove();
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Make date picker open on click anywhere
+    const editDobInput = document.getElementById('editDob');
+    if (editDobInput) {
+        editDobInput.addEventListener('click', function(e) {
+            this.showPicker();
+        });
+    }
 }
 
 window.saveEdit = async function(personId) {
@@ -365,7 +369,6 @@ window.saveEdit = async function(personId) {
         await loadPeople();
         closeEditModal();
         
-        // Refresh current view
         const currentSearch = document.getElementById('searchName').value;
         if (currentSearch) {
             renderLineageView(currentSearch);
@@ -542,6 +545,152 @@ function getFamilyTreeForCluster(cluster) {
     return { generations: result, familyName, memberCount: members.length, depths };
 }
 
+// ==============================================================
+// EXPORT FUNCTION - WORKING
+// ==============================================================
+function exportToSpreadsheet() {
+    if (!FAMILY_DB.people || FAMILY_DB.people.length === 0) {
+        showError('contributeErrorMsg', 'No data to export. Add some family members first!');
+        return;
+    }
+
+    const clusters = findFamilyClusters();
+
+    function getFatherName(person) {
+        const parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+        if (!parentsArray || parentsArray.length === 0) return '';
+        for (const pid of parentsArray) {
+            const p = FAMILY_DB.people.find(x => x.id === pid);
+            if (p && p.gender === 'male') return p.name;
+        }
+        const first = FAMILY_DB.people.find(x => x.id === parentsArray[0]);
+        return first ? first.name : '';
+    }
+
+    function getMotherName(person) {
+        const parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+        if (!parentsArray || parentsArray.length === 0) return '';
+        for (const pid of parentsArray) {
+            const p = FAMILY_DB.people.find(x => x.id === pid);
+            if (p && p.gender === 'female') return p.name;
+        }
+        if (parentsArray.length > 1) {
+            const second = FAMILY_DB.people.find(x => x.id === parentsArray[1]);
+            return second ? second.name : '';
+        }
+        return '';
+    }
+
+    function getChildrenNames(person) {
+        return FAMILY_DB.people
+            .filter(p => {
+                const pArr = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
+                return pArr && pArr.includes(person.id);
+            })
+            .map(p => p.name)
+            .sort()
+            .join('; ');
+    }
+
+    function getGenerationNumber(person) {
+        return getPersonGenerationLevel(person) + 1;
+    }
+
+    let csvRows = [];
+
+    csvRows.push('# ANCESTRAL THREADS - FAMILY TREE EXPORT');
+    csvRows.push(`# Generated: ${new Date().toLocaleString()}`);
+    csvRows.push(`# Total Families: ${clusters.length}`);
+    csvRows.push(`# Total Members: ${FAMILY_DB.people.length}`);
+    csvRows.push('#');
+    csvRows.push('# HOW TO READ THIS FILE:');
+    csvRows.push('#   - Each section is a separate family group');
+    csvRows.push('#   - Generation 1 = oldest ancestors, higher numbers = newer generations');
+    csvRows.push('#   - Multiple children are separated by semicolons');
+    csvRows.push('');
+
+    clusters.forEach((cluster, clusterIndex) => {
+        const familyLetter = String.fromCharCode(65 + clusterIndex);
+
+        let familyName = 'Unknown Family';
+        const rootAncestors = cluster.filter(person => {
+            const parents = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+            return !parents || parents.length === 0;
+        });
+        if (rootAncestors.length > 0 && rootAncestors[0].name) {
+            const nameParts = rootAncestors[0].name.split(' ');
+            familyName = nameParts[nameParts.length - 1] + ' Family';
+        } else if (cluster.length > 0 && cluster[0].name) {
+            const nameParts = cluster[0].name.split(' ');
+            familyName = nameParts[nameParts.length - 1] + ' Family';
+        }
+
+        csvRows.push(`"=== FAMILY ${familyLetter}: ${familyName} (${cluster.length} members) ==="`);
+        csvRows.push('');
+        csvRows.push('"Generation","Full Name","Gender","Date of Birth","Father","Mother","Children"');
+
+        const sortedMembers = [...cluster].sort((a, b) => {
+            const genDiff = getGenerationNumber(a) - getGenerationNumber(b);
+            if (genDiff !== 0) return genDiff;
+            return a.name.localeCompare(b.name);
+        });
+
+        let lastGen = null;
+        sortedMembers.forEach(person => {
+            const gen = getGenerationNumber(person);
+            const gender = person.gender ? person.gender.charAt(0).toUpperCase() + person.gender.slice(1) : 'Unknown';
+            const dob = person.dob || '';
+            const father = getFatherName(person);
+            const mother = getMotherName(person);
+            const children = getChildrenNames(person);
+
+            if (lastGen !== null && gen !== lastGen) {
+                csvRows.push('');
+            }
+            lastGen = gen;
+
+            csvRows.push(`"Gen ${gen}","${person.name}","${gender}","${dob}","${father}","${mother}","${children}"`);
+        });
+
+        csvRows.push('');
+        csvRows.push('');
+    });
+
+    csvRows.push('"=== SUMMARY ==="');
+    csvRows.push('"Family","Members","Generations"');
+    clusters.forEach((cluster, clusterIndex) => {
+        const familyLetter = String.fromCharCode(65 + clusterIndex);
+        let familyName = 'Unknown';
+        const roots = cluster.filter(p => {
+            const pa = typeof p.parents === 'string' ? JSON.parse(p.parents) : p.parents;
+            return !pa || pa.length === 0;
+        });
+        if (roots.length > 0) {
+            const parts = roots[0].name.split(' ');
+            familyName = parts[parts.length - 1] + ' Family';
+        } else if (cluster.length > 0) {
+            const parts = cluster[0].name.split(' ');
+            familyName = parts[parts.length - 1] + ' Family';
+        }
+
+        const maxGen = Math.max(...cluster.map(p => getPersonGenerationLevel(p) + 1));
+        csvRows.push(`"${familyLetter}: ${familyName}","${cluster.length}","${maxGen}"`);
+    });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.setAttribute('download', `family_tree_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showSuccess('contributeSuccessMsg', `Exported ${FAMILY_DB.people.length} family members across ${clusters.length} families!`);
+}
+
 function buildLineageGenerations(ancestors) {
     if (!ancestors.length) return [];
     
@@ -642,11 +791,10 @@ window.handleNodeClick = async function(personId, personName) {
     if (!person) return;
     
     if (canEditPerson(personId)) {
-        // User can edit - show edit modal
         showEditModal(person);
     } else {
-        // User cannot edit - show notification
-        alert(`🔒 You cannot edit "${person.name}" because you didn't add this record.\n\nPlease contact the administrator to request changes.`);
+        const owner = personOwners[personId] || 'another user';
+        alert(`🔒 You cannot edit "${person.name}" because this record was added by ${owner}.\n\nPlease contact the administrator to request changes.`);
     }
 };
 
@@ -778,6 +926,7 @@ async function contributeToTree(event) {
     const userGender = document.getElementById('userGender').value;
     const fatherName = getParentName('father');
     const motherName = getParentName('mother');
+    const userDob = document.getElementById('userDob') ? document.getElementById('userDob').value : null;
     
     const userValidation = validateFullName(userName);
     if (!userValidation.valid) {
@@ -838,14 +987,13 @@ async function contributeToTree(event) {
             id: userId,
             name: userName,
             gender: userGender,
-            dob: document.getElementById('userDob').value || null,
+            dob: userDob,
             parents: JSON.stringify(parentIds)
         };
         
         await addPersonToDB(newUser);
         await loadPeople();
         
-        // Set ownership for the new person
         if (!personOwners[userId]) {
             personOwners[userId] = currentUser;
             savePersonOwners();
@@ -854,6 +1002,7 @@ async function contributeToTree(event) {
         let message = `✅ Successfully added "${userName}" to the family tree!`;
         if (fatherName) message += ` 👨 Father: ${fatherName}`;
         if (motherName) message += ` 👩 Mother: ${motherName}`;
+        if (userDob) message += ` 📅 Born: ${userDob}`;
         if (!fatherName && !motherName && isAdmin) message += ` (Added as root ancestor)`;
         
         if (fatherMode === 'select') {
@@ -868,6 +1017,7 @@ async function contributeToTree(event) {
         document.getElementById('motherName').value = '';
         document.getElementById('fatherSelect').value = '';
         document.getElementById('motherSelect').value = '';
+        if (document.getElementById('userDob')) document.getElementById('userDob').value = '';
         
         showSuccess('contributeSuccessMsg', message);
         
@@ -906,7 +1056,7 @@ async function updateAdminPanel() {
         <div class="name-item">
             <div>
                 <strong>${escapeHtml(person.name)}</strong>
-                <br><small>ID: ${person.id} | ${person.dob || 'No DOB'} | Owner: ${personOwners[person.id] || 'Unknown'}</small>
+                <br><small>ID: ${person.id} | DOB: ${person.dob || 'Not set'} | Owner: ${personOwners[person.id] || 'Unknown'}</small>
             </div>
             <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
         </div>
@@ -955,11 +1105,23 @@ function logout() {
     window.location.href = 'login.html';
 }
 
+// Make date pickers open when clicking anywhere on the field
+function setupDatePickers() {
+    const dobInput = document.getElementById('userDob');
+    if (dobInput) {
+        dobInput.addEventListener('click', function(e) {
+            this.showPicker();
+        });
+    }
+}
+
 async function init() {
     if (!checkAuth()) return;
     
     try {
         await loadPeople();
+        
+        setupDatePickers();
         
         window.toggleParentMode = toggleParentMode;
         window.handleNodeClick = handleNodeClick;
@@ -995,11 +1157,7 @@ function setupEventListeners() {
     });
     
     document.getElementById('exportDataBtn').addEventListener('click', () => {
-        if (typeof exportToSpreadsheet === 'function') {
-            exportToSpreadsheet();
-        } else {
-            console.log('Export function not loaded yet');
-        }
+        exportToSpreadsheet();
     });
     
     document.getElementById('contributeForm').addEventListener('submit', contributeToTree);
