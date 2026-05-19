@@ -442,7 +442,8 @@ function findFamilyClusters() {
     FAMILY_DB.people.forEach(person => {
         adjacency.set(person.id, new Set());
     });
-    
+
+    // Existing: link by parent-child
     FAMILY_DB.people.forEach(person => {
         if (person.parents && person.parents.length) {
             let parentsArray = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
@@ -454,21 +455,39 @@ function findFamilyClusters() {
             });
         }
     });
-    
+
+    // NEW: also link by shared family_group
+    const groupMap = new Map();
+    FAMILY_DB.people.forEach(person => {
+        if (person.family_group) {
+            if (!groupMap.has(person.family_group)) groupMap.set(person.family_group, []);
+            groupMap.get(person.family_group).push(person.id);
+        }
+    });
+    groupMap.forEach(ids => {
+        for (let i = 0; i < ids.length - 1; i++) {
+            if (adjacency.has(ids[i]) && adjacency.has(ids[i + 1])) {
+                adjacency.get(ids[i]).add(ids[i + 1]);
+                adjacency.get(ids[i + 1]).add(ids[i]);
+            }
+        }
+    });
+
+    // Rest unchanged
     const visited = new Set();
     const clusters = [];
-    
+
     for (let person of FAMILY_DB.people) {
         if (!visited.has(person.id)) {
             const cluster = [];
             const queue = [person.id];
             visited.add(person.id);
-            
+
             while (queue.length > 0) {
                 const currentId = queue.shift();
                 const currentPerson = FAMILY_DB.people.find(p => p.id === currentId);
                 if (currentPerson) cluster.push(currentPerson);
-                
+
                 const neighbors = adjacency.get(currentId) || new Set();
                 for (let neighborId of neighbors) {
                     if (!visited.has(neighborId)) {
@@ -477,13 +496,11 @@ function findFamilyClusters() {
                     }
                 }
             }
-            
-            if (cluster.length > 0) {
-                clusters.push(cluster);
-            }
+
+            if (cluster.length > 0) clusters.push(cluster);
         }
     }
-    
+
     return clusters;
 }
 
@@ -1231,17 +1248,42 @@ window.submitAddAtGeneration = async function(generationNumber, siblingIdsStr, d
 
     try {
         if (depthIdx === 0) {
+            // --- Resolve or create a family_group for root-level siblings ---
+            let familyGroup = null;
+
+            // Inherit family_group from an existing sibling if one already has it
+            for (const sibId of siblingIds) {
+                const sib = FAMILY_DB.people.find(p => p.id === sibId);
+                if (sib && sib.family_group) {
+                    familyGroup = sib.family_group;
+                    break;
+                }
+            }
+
+            // No existing group — create one and backfill onto current siblings
+            if (!familyGroup && siblingIds.length > 0) {
+                familyGroup = `fg_${siblingIds[0]}`;
+                for (const sibId of siblingIds) {
+                    const sib = FAMILY_DB.people.find(p => p.id === sibId);
+                    if (sib && !sib.family_group) {
+                        await updatePersonInDB(sibId, { family_group: familyGroup });
+                    }
+                }
+            }
+
             const newPerson = {
                 id: newId,
                 name,
                 gender: 'unknown',
                 dob: dob || null,
-                parents: JSON.stringify([])
+                parents: JSON.stringify([]),
+                family_group: familyGroup
             };
 
             await addPersonToDB(newPerson);
             await loadPeople();
 
+            // If a shared child already exists, still wire up the co-parent link
             let anchorChild = null;
             for (const sibId of siblingIds) {
                 anchorChild = FAMILY_DB.people.find(p => {
@@ -1258,26 +1300,11 @@ window.submitAddAtGeneration = async function(generationNumber, siblingIdsStr, d
                 const updatedParents = [...new Set([...childParents, newId])];
                 await updatePersonInDB(anchorChild.id, { parents: JSON.stringify(updatedParents) });
                 await loadPeople();
-            } else {
-                const firstSibling = FAMILY_DB.people.find(p => p.id === siblingIds[0]);
-                const lastName = firstSibling
-                    ? firstSibling.name.trim().split(' ').pop()
-                    : 'Unknown';
-
-                const linkChildId = `link_${siblingIds[0]}_${newId}`.slice(0, 60);
-                const linkChild = {
-                    id: linkChildId,
-                    name: `${lastName} Childdd`,
-                    gender: 'unknown',
-                    dob: null,
-                    parents: JSON.stringify([siblingIds[0], newId])
-                };
-
-                await addPersonToDB(linkChild);
-                await loadPeople();
             }
+            // No phantom child — family_group is the link when no anchor child exists
 
         } else {
+            // Non-root: inherit parents from siblings (unchanged)
             let inheritedParentIds = [];
             for (const sibId of siblingIds) {
                 const sibling = FAMILY_DB.people.find(p => p.id === sibId);
