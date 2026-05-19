@@ -820,12 +820,13 @@ function renderWholeFamilyTree() {
             const generationNumber = idx + 1;
             const genLabel = generationNumber === 1 ? "👴👵 Oldest Generation" : `📍 Generation ${generationNumber}`;
             html += `<div class="gen-label">${genLabel}</div>`;
-            html += `<div class="generation">`;
-            for (let member of level) {
+            html += `<div class="generation" data-gen="${generationNumber}" data-depth="${idx}">`;            for (let member of level) {
                 const canEdit = canEditPerson(member.id);
                 const editIcon = canEdit ? ' ✏️' : ' 🔒';
                 html += `<div class="tree-node" onclick="handleNodeClick('${member.id}', '${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong>${editIcon}</div>`;
             }
+            const siblingIds = level.map(m => m.id).join(',');
+            html += `<div class="tree-node add-gen-btn" onclick="showAddAtGenerationModal(${generationNumber}, '${siblingIds}', ${idx})">＋ Add</div>`;
             html += `</div>`;
             if (idx < family.generations.length - 1) {
                 html += `<div class="connector-line">▼</div>`;
@@ -853,14 +854,15 @@ function renderWholeFamilyTree() {
                 const generationNumber = idx + 1;
                 const genLabel = generationNumber === 1 ? "👴👵 Oldest Generation" : `📍 Generation ${generationNumber}`;
                 html += `<div class="gen-label">${genLabel}</div>`;
-                html += `<div class="generation">`;
-                for (let member of level) {
-                    const canEdit = canEditPerson(member.id);
-                    const editIcon = canEdit ? ' ✏️' : ' 🔒';
-                    html += `<div class="tree-node" onclick="handleNodeClick('${member.id}', '${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong>${editIcon}</div>`;
-                }
-                html += `</div>`;
-                if (idx < family.generations.length - 1) {
+                html += `<div class="generation" data-gen="${generationNumber}" data-depth="${idx}">`;                for (let member of level) {
+                const canEdit = canEditPerson(member.id);
+                const editIcon = canEdit ? ' ✏️' : ' 🔒';
+                html += `<div class="tree-node" onclick="handleNodeClick('${member.id}', '${escapeHtml(member.name)}')"><strong>${escapeHtml(member.name)}</strong>${editIcon}</div>`;
+            }
+            const siblingIds = level.map(m => m.id).join(',');
+            html += `<div class="tree-node add-gen-btn" onclick="showAddAtGenerationModal(${generationNumber}, '${siblingIds}', ${idx})">＋ Add</div>`;
+            html += `</div>`;
+            if (idx < family.generations.length - 1) {
                     html += `<div class="connector-line">▼</div>`;
                 }
             }
@@ -1172,6 +1174,148 @@ function setupEventListeners() {
         });
     });
 }
+window.showAddAtGenerationModal = function(generationNumber, siblingIdsStr, depthIdx) {
+    const existing = document.getElementById('addAtGenModal');
+    if (existing) existing.remove();
 
+    const modalHtml = `
+        <div id="addAtGenModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:10000;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:380px;width:90%;">
+                <h3 style="margin-bottom:0.25rem;">➕ Add to Generation ${generationNumber}</h3>
+                <p style="font-size:0.8rem;color:#888;margin-bottom:1rem;">This person will be placed in Generation ${generationNumber}.</p>
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="addAtGenName" placeholder="First Last" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-top:0.75rem;">
+                    <label>Date of Birth <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <input type="date" id="addAtGenDob" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;cursor:pointer;">
+                </div>
+                <div id="addAtGenError" style="color:#c33;font-size:0.82rem;margin-top:0.5rem;display:none;"></div>
+                <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+                    <button onclick="submitAddAtGeneration(${generationNumber}, '${siblingIdsStr}', ${depthIdx})" class="submit-btn" style="flex:1;">Add to Tree</button>
+                    <button onclick="closeAddAtGenModal()" style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;padding:0.5rem;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const dobInput = document.getElementById('addAtGenDob');
+    if (dobInput) dobInput.addEventListener('click', function() { this.showPicker(); });
+};
+
+window.closeAddAtGenModal = function() {
+    const modal = document.getElementById('addAtGenModal');
+    if (modal) modal.remove();
+};
+
+window.submitAddAtGeneration = async function(generationNumber, siblingIdsStr, depthIdx) {
+    const name = document.getElementById('addAtGenName').value.trim();
+    const dob = document.getElementById('addAtGenDob').value;
+    const errorDiv = document.getElementById('addAtGenError');
+
+    const showModalError = (msg) => {
+        errorDiv.textContent = '❌ ' + msg;
+        errorDiv.style.display = 'block';
+        setTimeout(() => { errorDiv.style.display = 'none'; }, 5000);
+    };
+
+    const nameValidation = validateFullName(name);
+    if (!nameValidation.valid) return showModalError(nameValidation.message);
+    if (findPersonByName(name)) return showModalError(`"${name}" already exists in the tree.`);
+
+    const siblingIds = siblingIdsStr ? siblingIdsStr.split(',').filter(Boolean) : [];
+    const newId = nameToId(name);
+
+    try {
+        if (depthIdx === 0) {
+            const newPerson = {
+                id: newId,
+                name,
+                gender: 'unknown',
+                dob: dob || null,
+                parents: JSON.stringify([])
+            };
+
+            await addPersonToDB(newPerson);
+            await loadPeople();
+
+            let anchorChild = null;
+            for (const sibId of siblingIds) {
+                anchorChild = FAMILY_DB.people.find(p => {
+                    const pArr = typeof p.parents === 'string' ? JSON.parse(p.parents) : (p.parents || []);
+                    return pArr.includes(sibId);
+                });
+                if (anchorChild) break;
+            }
+
+            if (anchorChild) {
+                const childParents = typeof anchorChild.parents === 'string'
+                    ? JSON.parse(anchorChild.parents)
+                    : (anchorChild.parents || []);
+                const updatedParents = [...new Set([...childParents, newId])];
+                await updatePersonInDB(anchorChild.id, { parents: JSON.stringify(updatedParents) });
+                await loadPeople();
+            } else {
+                const firstSibling = FAMILY_DB.people.find(p => p.id === siblingIds[0]);
+                const lastName = firstSibling
+                    ? firstSibling.name.trim().split(' ').pop()
+                    : 'Unknown';
+
+                const linkChildId = `link_${siblingIds[0]}_${newId}`.slice(0, 60);
+                const linkChild = {
+                    id: linkChildId,
+                    name: `${lastName} Childdd`,
+                    gender: 'unknown',
+                    dob: null,
+                    parents: JSON.stringify([siblingIds[0], newId])
+                };
+
+                await addPersonToDB(linkChild);
+                await loadPeople();
+            }
+
+        } else {
+            let inheritedParentIds = [];
+            for (const sibId of siblingIds) {
+                const sibling = FAMILY_DB.people.find(p => p.id === sibId);
+                if (sibling) {
+                    const sibParents = typeof sibling.parents === 'string'
+                        ? JSON.parse(sibling.parents)
+                        : (sibling.parents || []);
+                    if (sibParents.length > 0) {
+                        inheritedParentIds = sibParents;
+                        break;
+                    }
+                }
+            }
+
+            const newPerson = {
+                id: newId,
+                name,
+                gender: 'unknown',
+                dob: dob || null,
+                parents: JSON.stringify(inheritedParentIds)
+            };
+
+            await addPersonToDB(newPerson);
+            await loadPeople();
+        }
+
+        personOwners[newId] = currentUser;
+        savePersonOwners();
+
+        closeAddAtGenModal();
+        showSuccess('contributeSuccessMsg', `✅ "${name}" added to Generation ${generationNumber}!`);
+        renderWholeFamilyTree();
+
+        if (isAdmin) await updateAdminPanel();
+
+    } catch (err) {
+        showModalError(`Failed to add: ${err.message}`);
+    }
+};
 setupEventListeners();
 init();
