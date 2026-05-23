@@ -106,6 +106,7 @@
             white-space: nowrap;
             font-size: 0.85rem;
             transition: all 0.3s;
+            border: none;
         }
 
         .tab-btn.active {
@@ -142,7 +143,7 @@
             gap: 0.75rem;
         }
 
-        .search-form div {
+        .search-form div.search-input-wrap {
             width: 100%;
         }
 
@@ -169,7 +170,8 @@
             gap: 0.5rem;
         }
 
-        .search-form button {
+        .search-form button,
+        .btn {
             background: #8b5a2b;
             color: white;
             padding: 0.6rem 1rem;
@@ -181,13 +183,9 @@
             width: 100%;
         }
 
-        .view-all-btn, .export-btn {
-            background: #c2894b;
-        }
-
-        .export-btn {
-            background: #28a745;
-        }
+        .btn-amber { background: #c2894b; }
+        .btn-green { background: #28a745; }
+        .btn-purple { background: #6f42c1; }
 
         .lineage-container {
             background: #fcf8ef;
@@ -206,12 +204,88 @@
             padding-left: 0.75rem;
         }
 
-        .family-tree {
+        /* ── LINEAGE (vertical chain) ── */
+        .lineage-chain {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+        }
+
+        .lineage-gen-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        .lineage-gen-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #b08052;
+            letter-spacing: 1px;
+            margin: 0.6rem 0 0.3rem;
+        }
+
+        .lineage-nodes-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .lineage-connector {
+            font-size: 1.4rem;
+            color: #c2a075;
+            line-height: 1;
+            margin: 0.1rem 0;
+        }
+
+        /* ── WHOLE TREE (proper node tree) ── */
+        .whole-tree-wrap {
+            overflow-x: auto;
+            padding-bottom: 1rem;
+        }
+
+        .tree-svg-container {
+            position: relative;
+            width: 100%;
+        }
+
+        /* ── GENERATIONS VIEW (flat rows + add btn) ── */
+        .generations-tree {
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
+        .gen-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #b08052;
+            text-align: center;
+            width: 100%;
+            margin-top: 0.75rem;
+            letter-spacing: 1px;
+        }
+
+        .generation {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.75rem;
+            margin: 0.75rem 0;
+        }
+
+        .connector-line {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #c2a075;
+        }
+
+        /* ── TREE NODE (shared) ── */
         .tree-node {
             text-align: center;
             background: linear-gradient(145deg, #fff6e8, #ffefdd);
@@ -231,33 +305,52 @@
 
         .tree-node:hover {
             transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.13);
         }
 
-        .generation {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 0.75rem;
-            margin: 0.75rem 0;
-        }
-
-        .gen-label {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            font-weight: bold;
+        .tree-node .uid-badge {
+            display: block;
+            font-size: 0.6rem;
             color: #b08052;
-            text-align: center;
-            width: 100%;
-            margin-top: 0.75rem;
-            letter-spacing: 1px;
+            font-weight: 400;
+            margin-top: 0.1rem;
+            letter-spacing: 0.5px;
         }
 
-        .connector-line {
-            text-align: center;
-            font-size: 1.2rem;
-            color: #c2a075;
+        .tree-node.focused-node {
+            background: linear-gradient(145deg, #ffe4b2, #ffd080);
+            border-color: #c2894b;
+            box-shadow: 0 4px 14px rgba(194,137,75,0.35);
         }
 
+        .add-gen-btn {
+            background: linear-gradient(145deg, #eaf7ee, #d4edda);
+            border-color: #aed6b5;
+            color: #2d6a4f;
+            font-size: 0.75rem;
+        }
+
+        /* ── SVG TREE STYLES ── */
+        #wholeFamilyTreeSvg {
+            display: block;
+            overflow: visible;
+        }
+
+        .svg-node-rect {
+            fill: #fff6e8;
+            stroke: #e7cfb0;
+            stroke-width: 1.5;
+            rx: 10;
+            ry: 10;
+        }
+
+        .svg-edge {
+            fill: none;
+            stroke: #c2a075;
+            stroke-width: 1.8;
+        }
+
+        /* ── ADMIN ── */
         .admin-stats {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 1rem;
@@ -316,13 +409,8 @@
             gap: 0.5rem;
         }
 
-        .name-item div strong {
-            font-size: 0.85rem;
-        }
-
-        .name-item div small {
-            font-size: 0.65rem;
-        }
+        .name-item div strong { font-size: 0.85rem; }
+        .name-item div small { font-size: 0.65rem; }
 
         .delete-btn {
             background: #dc3545;
@@ -334,6 +422,7 @@
             font-size: 0.7rem;
         }
 
+        /* ── CONTRIBUTE ── */
         .contribute-section {
             background: white;
             border-radius: 1rem;
@@ -363,7 +452,8 @@
             font-size: 0.85rem;
         }
 
-        .form-group input, .form-group select {
+        .form-group input,
+        .form-group select {
             width: 100%;
             padding: 0.6rem;
             border: 2px solid #e0cfb6;
@@ -377,7 +467,8 @@
             gap: 0.5rem;
         }
 
-        .parent-selector select, .parent-selector input {
+        .parent-selector select,
+        .parent-selector input {
             width: 100%;
         }
 
@@ -418,19 +509,9 @@
             font-size: 0.8rem;
         }
 
-        .success-msg.show, .error-msg.show {
-            display: block;
-        }
-
-        .success-msg {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .error-msg {
-            background: #f8d7da;
-            color: #721c24;
-        }
+        .success-msg.show, .error-msg.show { display: block; }
+        .success-msg { background: #d4edda; color: #155724; }
+        .error-msg   { background: #f8d7da; color: #721c24; }
 
         .info-note {
             background: #e8f4f8;
@@ -457,7 +538,7 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
+            0%   { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
 
@@ -480,74 +561,45 @@
             font-size: 1rem;
         }
 
+        /* ── RESPONSIVE ── */
         @media (min-width: 600px) {
-            body {
-                padding: 1rem;
-            }
-            
+            body { padding: 1rem; }
+
             .main-header {
                 padding: 1rem 1.5rem;
                 flex-direction: row;
                 justify-content: space-between;
                 align-items: center;
             }
-            
-            .logo h1 {
-                font-size: 1.5rem;
-                text-align: left;
-            }
-            
-            .logo span {
-                text-align: left;
-            }
-            
-            .user-info {
-                justify-content: flex-end;
-            }
-            
+
+            .logo h1 { font-size: 1.5rem; text-align: left; }
+            .logo span { text-align: left; }
+            .user-info { justify-content: flex-end; }
+
             .tabs {
                 padding: 0.75rem 1.5rem;
                 overflow-x: visible;
                 justify-content: flex-start;
             }
-            
-            .tab-content {
-                padding: 1.5rem;
-            }
-            
+
+            .tab-content { padding: 1.5rem; }
+
             .search-form {
                 flex-direction: row;
                 align-items: flex-end;
             }
-            
-            .search-form div {
-                flex: 2;
-            }
-            
-            .button-group {
-                flex-direction: row;
-            }
-            
-            .search-form button {
-                width: auto;
-            }
-            
-            .parent-selector {
-                flex-direction: row;
-            }
-            
-            .toggle-mode-btn {
-                width: auto;
-                white-space: nowrap;
-            }
-            
-            .names-grid {
-                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            }
-            
-            .submit-btn {
-                width: auto;
-            }
+
+            .search-form div.search-input-wrap { flex: 2; }
+
+            .button-group { flex-direction: row; }
+            .search-form button { width: auto; }
+
+            .parent-selector { flex-direction: row; }
+            .toggle-mode-btn { width: auto; white-space: nowrap; }
+            .names-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+            .submit-btn { width: auto; }
+
+            .btn { width: auto; }
         }
 
         @media (min-width: 768px) {
@@ -556,24 +608,14 @@
                 min-width: 140px;
                 font-size: 0.9rem;
             }
-            
-            .generation {
-                gap: 1.5rem;
-            }
-            
-            .gen-label {
-                font-size: 0.75rem;
-            }
+
+            .generation { gap: 1.5rem; }
+            .gen-label  { font-size: 0.75rem; }
         }
 
         @media (min-width: 1024px) {
-            .app-container {
-                border-radius: 2rem;
-            }
-            
-            .tab-content {
-                padding: 2rem;
-            }
+            .app-container { border-radius: 2rem; }
+            .tab-content   { padding: 2rem; }
         }
 
         @media (hover: none) and (pointer: coarse) {
@@ -581,8 +623,9 @@
                 cursor: default;
                 -webkit-tap-highlight-color: transparent;
             }
-            
-            .tab-btn:active, .tree-node:active, .delete-btn:active, .submit-btn:active, .toggle-mode-btn:active {
+
+            .tab-btn:active, .tree-node:active, .delete-btn:active,
+            .submit-btn:active, .toggle-mode-btn:active {
                 opacity: 0.7;
                 transform: scale(0.98);
             }
@@ -591,6 +634,8 @@
 </head>
 <body>
 <div class="app-container">
+
+    <!-- ── HEADER ── -->
     <div class="main-header">
         <div class="logo">
             <h1>📜 Ancestral Threads</h1>
@@ -598,29 +643,35 @@
         </div>
         <div class="user-info">
             <span>👋 <span id="usernameDisplay"></span></span>
-            <span id="adminBadge" class="admin-badge" style="display: none;">👑 ADMIN</span>
+            <span id="adminBadge" class="admin-badge" style="display:none;">👑 ADMIN</span>
             <button id="logoutBtn" class="logout-btn">🚪 Logout</button>
         </div>
     </div>
 
+    <!-- ── TABS ── -->
     <div class="tabs">
-        <button class="tab-btn active" data-tab="contribute">✍️ Add Your Details</button>
-        <button class="tab-btn" data-tab="view">🔍 View Lineage</button>
-        <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👑 Admin Panel</button>
+        <button class="tab-btn active"  data-tab="contribute">✍️ Add Your Details</button>
+        <button class="tab-btn"         data-tab="lineage">🔍 View Lineage</button>
+        <button class="tab-btn"         data-tab="wholetree">🌳 Whole Family Tree</button>
+        <button class="tab-btn"         data-tab="generations">📊 View Generations</button>
+        <button class="tab-btn"         data-tab="admin" id="adminTabBtn" style="display:none;">👑 Admin Panel</button>
     </div>
 
+    <!-- ══════════════════════════════════════════════
+         TAB 1 — ADD YOUR DETAILS
+    ══════════════════════════════════════════════ -->
     <div id="contributeTab" class="tab-content active">
         <div class="contribute-section">
             <h3>🌱 Add Yourself to the Family Tree</h3>
             <p>Help build our community tree! Add yourself and your parents.</p>
-            
+
             <form id="contributeForm">
                 <div class="form-group">
                     <label>Your Full Name *</label>
                     <input type="text" id="userFullName" required placeholder="First Name Last Name (e.g., John Smith)">
                     <div class="info-note">⚠️ Must include both first and last name</div>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Your Gender</label>
                     <select id="userGender">
@@ -629,16 +680,18 @@
                         <option value="other">Other</option>
                     </select>
                 </div>
+
                 <div class="form-group">
                     <label>📅 Date of Birth (optional)</label>
-                    <input type="date" id="userDob" style="cursor: pointer;">
+                    <input type="date" id="userDob" style="cursor:pointer;">
                     <div class="info-note">If known, please select your date of birth</div>
                 </div>
+
                 <div class="form-group">
                     <label>Father's Full Name</label>
                     <div id="fatherContainer">
                         <div class="parent-selector">
-                            <select id="fatherSelect" style="display: none;">
+                            <select id="fatherSelect" style="display:none;">
                                 <option value="">-- Select Father from existing records --</option>
                             </select>
                             <input type="text" id="fatherName" placeholder="First Name Last Name">
@@ -648,12 +701,12 @@
                     <div class="mode-indicator" id="fatherModeIndicator">✏️ Manual entry mode (type any name)</div>
                     <div class="info-note">If known, please include both first and last name</div>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Mother's Full Name</label>
                     <div id="motherContainer">
                         <div class="parent-selector">
-                            <select id="motherSelect" style="display: none;">
+                            <select id="motherSelect" style="display:none;">
                                 <option value="">-- Select Mother from existing records --</option>
                             </select>
                             <input type="text" id="motherName" placeholder="First Name Last Name">
@@ -663,46 +716,101 @@
                     <div class="mode-indicator" id="motherModeIndicator">✏️ Manual entry mode (type any name)</div>
                     <div class="info-note">If known, please include both first and last name</div>
                 </div>
-                
+
                 <button type="submit" class="submit-btn">🌳 Add to Family Tree</button>
             </form>
             <div id="contributeSuccessMsg" class="success-msg"></div>
-            <div id="contributeErrorMsg" class="error-msg"></div>
+            <div id="contributeErrorMsg"   class="error-msg"></div>
         </div>
-        
-        <div class="info-note" style="margin-top: 0.5rem;">
-            💡 <strong>How it works:</strong> When you add yourself, we'll also add your parents if they're not already in the tree. 
+
+        <div class="info-note" style="margin-top:0.5rem;">
+            💡 <strong>How it works:</strong> When you add yourself, we'll also add your parents if they're not already in the tree.
             You can select existing parents from the dropdown or manually enter new ones.
+            Each person gets a unique hidden ID so two people with the same name can both exist.
         </div>
     </div>
 
-    <div id="viewTab" class="tab-content">
+    <!-- ══════════════════════════════════════════════
+         TAB 2 — VIEW LINEAGE
+    ══════════════════════════════════════════════ -->
+    <div id="lineageTab" class="tab-content">
         <div class="search-section">
-            <form id="searchForm" class="search-form">
-                <div>
+            <form id="searchLineageForm" class="search-form">
+                <div class="search-input-wrap">
                     <label>👤 Search Family Member</label>
-                    <input type="text" id="searchName" placeholder="Enter full name (e.g., John Smith)">
+                    <input type="text" id="searchLineageName" placeholder="Enter name (e.g., John Smith)">
                 </div>
                 <div class="button-group">
-                    <button type="submit">🌿 View Lineage</button>
-                    <button type="button" id="viewWholeTreeBtn" class="view-all-btn">🌳 View Whole Family Tree</button>
-                    <button type="button" id="exportDataBtn" class="export-btn">📊 Export</button>
+                    <button type="submit" class="btn">🔍 View Full Lineage</button>
+                    <button type="button" id="exportLineageBtn" class="btn btn-green">📊 Export</button>
                 </div>
             </form>
-            <div id="searchStatus" style="margin-top: 0.5rem; color: #9e6d42; font-size: 0.8rem;"></div>
+            <div id="lineageStatus" style="margin-top:0.5rem;color:#9e6d42;font-size:0.8rem;"></div>
         </div>
 
         <div class="lineage-container">
-            <div class="tree-title" id="treeTitle">✨ Family Tree</div>
-            <div id="visualTreeContainer">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p style="font-size: 0.8rem;">Loading family tree...</p>
+            <div class="tree-title" id="lineageTitle">🔍 Lineage View</div>
+            <div id="lineageContainer">
+                <div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
+                    🌱 Enter a name above to see their full lineage — ancestors above, descendants below.
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════
+         TAB 3 — WHOLE FAMILY TREE
+    ══════════════════════════════════════════════ -->
+    <div id="wholetreeTab" class="tab-content">
+        <div class="search-section" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+            <div>
+                <strong style="color:#5a3e2b;">🌳 Whole Family Tree</strong>
+                <div style="font-size:0.78rem;color:#9e6d42;margin-top:0.2rem;">Shows all families with siblings on the same row, parents above children.</div>
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button id="renderWholeTreeBtn" class="btn" style="width:auto;">🌳 Render Tree</button>
+                <button id="exportWholeTreeBtn" class="btn btn-green" style="width:auto;">📊 Export</button>
+            </div>
+        </div>
+
+        <div class="lineage-container">
+            <div class="tree-title" id="wholeTreeTitle">🌳 Family Tree</div>
+            <div id="wholeTreeContainer">
+                <div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
+                    Click <strong>Render Tree</strong> to display the complete family tree.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         TAB 4 — VIEW GENERATIONS
+    ══════════════════════════════════════════════ -->
+    <div id="generationsTab" class="tab-content">
+        <div class="search-section" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+            <div>
+                <strong style="color:#5a3e2b;">📊 Generations View</strong>
+                <div style="font-size:0.78rem;color:#9e6d42;margin-top:0.2rem;">Browse all members grouped by generation. Use ＋ Add to insert members into a specific generation.</div>
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button id="renderGenerationsBtn" class="btn" style="width:auto;">📊 Load Generations</button>
+                <button id="exportGenerationsBtn" class="btn btn-green" style="width:auto;">📊 Export</button>
+            </div>
+        </div>
+
+        <div class="lineage-container">
+            <div class="tree-title" id="generationsTitle">📊 Generations</div>
+            <div id="generationsContainer">
+                <div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
+                    Click <strong>Load Generations</strong> to browse members by generation.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         TAB 5 — ADMIN PANEL
+    ══════════════════════════════════════════════ -->
     <div id="adminTab" class="tab-content">
         <div class="admin-stats">
             <div class="stat-card">
@@ -721,12 +829,14 @@
 
         <div class="names-list">
             <h3>📋 All Family Names</h3>
-            <div id="namesGrid"></div>
+            <div id="namesGrid" class="names-grid"></div>
         </div>
     </div>
-</div>
+
+</div><!-- /.app-container -->
+
 <!-- Google Translate Widget -->
-<div id="google_translate_element" style="position: fixed; bottom: 10px; right: 10px; z-index: 1000; background: white; padding: 5px 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);"></div>
+<div id="google_translate_element" style="position:fixed;bottom:10px;right:10px;z-index:1000;background:white;padding:5px 10px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.2);"></div>
 
 <script src="goog_script.js"></script>
 <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>

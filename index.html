@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Login & Signup | Ancestral Threads</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+        }
+
+        /* FIX 1: overflow-x on html AND body prevents pseudo-elements
+           and fixed-position children from triggering horizontal scroll */
+        html {
+            overflow-x: hidden;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* FIX 2: Clamp the decorative emojis so they never push
+           the layout wider than the viewport */
+        body::before {
+            content: "🌳";
+            position: absolute;
+            font-size: clamp(100px, 30vw, 200px);
+            opacity: 0.05;
+            bottom: -30px;
+            right: -20px;
+            pointer-events: none;
+            /* prevent this pseudo-element from creating overflow */
+            max-width: 50vw;
+            overflow: hidden;
+            line-height: 1;
+        }
+
+        body::after {
+            content: "📜";
+            position: absolute;
+            font-size: clamp(90px, 28vw, 180px);
+            opacity: 0.05;
+            top: -30px;
+            left: -20px;
+            pointer-events: none;
+            max-width: 50vw;
+            overflow: hidden;
+            line-height: 1;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 500px;
+            animation: fadeInUp 0.6s ease-out;
+            margin: 0 auto;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-card {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .login-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .logo h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .logo p {
+            color: #666;
+            margin-top: 0.3rem;
+            font-size: 0.8rem;
+        }
+
+        .auth-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .auth-tab {
+            flex: 1;
+            text-align: center;
+            padding: 0.6rem;
+            background: transparent;
+            border: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .auth-tab.active {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .auth-form {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 0.4rem;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 0.75rem 0.9rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 0.9rem;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+            background: #f9f9f9;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            user-select: none;
+            color: #667eea;
+            font-size: 1.1rem;
+            padding: 0.25rem;
+        }
+
+        .auth-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.85rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 0.5rem;
+        }
+
+        .auth-btn:active {
+            transform: scale(0.98);
+        }
+
+        .info-message {
+            background: #f0f4ff;
+            padding: 0.8rem;
+            border-radius: 0.9rem;
+            margin-top: 1.2rem;
+            font-size: 0.8rem;
+            color: #667eea;
+            text-align: center;
+        }
+
+        .info-message strong {
+            color: #764ba2;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 0.7rem;
+            border-radius: 0.7rem;
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            text-align: center;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+            animation: shake 0.3s ease;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 0.7rem;
+            border-radius: 0.7rem;
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            text-align: center;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+
+        .admin-badge {
+            position: fixed;
+            bottom: 0.75rem;
+            right: 0.75rem;
+            background: rgba(0,0,0,0.7);
+            color: gold;
+            padding: 0.25rem 0.6rem;
+            border-radius: 2rem;
+            font-size: 0.6rem;
+            font-family: monospace;
+            z-index: 1000;
+        }
+
+        /* ========= ENHANCED GOOGLE TRANSLATE WIDGET - BIGGER & BETTER VISIBILITY ========= */
+        /* Main container - larger and more prominent */
+        #google_translate_element {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 10px 16px;
+            border-radius: 40px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 0 2px rgba(255,255,255,0.3);
+            max-width: calc(100vw - 40px);
+            transition: all 0.2s ease;
+            backdrop-filter: blur(4px);
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        /* Make the select dropdown larger */
+        #google_translate_element select {
+            font-size: 1rem !important;
+            padding: 8px 12px !important;
+            border-radius: 32px !important;
+            background: #f8f9ff !important;
+            border: 2px solid #667eea !important;
+            color: #2d3e50 !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            outline: none !important;
+            min-width: 180px !important;
+            font-family: system-ui, 'Segoe UI', monospace !important;
+            transition: all 0.2s;
+        }
+
+        #google_translate_element select:hover {
+            background: #ffffff !important;
+            border-color: #764ba2 !important;
+            box-shadow: 0 2px 8px rgba(102,126,234,0.3);
+        }
+
+        #google_translate_element select:focus {
+            border-color: #764ba2 !important;
+            box-shadow: 0 0 0 3px rgba(118,75,162,0.2);
+        }
+
+        /* Style the Google Translate inner text and links */
+        .goog-te-gadget {
+            font-family: system-ui, 'Segoe UI', sans-serif !important;
+            font-size: 0 !important;  /* hide the default 'Powered by' text, but custom tooltip still works */
+        }
+
+        .goog-te-gadget-simple {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+
+        /* Improve the visibility of the translate icon if present */
+        .goog-te-gadget img {
+            display: none !important;
+        }
+
+        /* Add a nice label before the dropdown */
+        #google_translate_element::before {
+            content: "🌐 Translate page: ";
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-right: 8px;
+            letter-spacing: -0.2px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        /* Adjustments for mobile to ensure it stays visible and doesn't overflow */
+        @media (max-width: 550px) {
+            #google_translate_element {
+                bottom: 12px;
+                right: 12px;
+                left: auto;
+                padding: 6px 12px;
+                border-radius: 32px;
+            }
+            
+            #google_translate_element::before {
+                font-size: 0.72rem;
+                margin-right: 6px;
+                display: inline-block;
+            }
+            
+            #google_translate_element select {
+                font-size: 0.8rem !important;
+                padding: 5px 8px !important;
+                min-width: 140px !important;
+            }
+        }
+
+        /* On very small screens, reposition to bottom-left to avoid collision with badge, but still big */
+        @media (max-width: 420px) {
+            #google_translate_element {
+                bottom: 50px;
+                right: auto;
+                left: 12px;
+                background: rgba(255, 255, 255, 0.98);
+                backdrop-filter: blur(8px);
+            }
+            .admin-badge {
+                bottom: 12px;
+                right: 12px;
+            }
+        }
+        
+        /* Landscape mode adjustments */
+        @media (max-width: 850px) and (orientation: landscape) {
+            #google_translate_element {
+                bottom: 8px;
+                right: 8px;
+                padding: 5px 10px;
+            }
+            #google_translate_element select {
+                min-width: 150px !important;
+                font-size: 0.8rem !important;
+                padding: 4px 8px !important;
+            }
+            #google_translate_element::before {
+                font-size: 0.7rem;
+            }
+        }
+
+        /* Tablet and Desktop Styles */
+        @media (min-width: 480px) {
+            body {
+                padding: 1.5rem;
+            }
+
+            .login-card {
+                border-radius: 2rem;
+                padding: 2rem;
+            }
+
+            .logo h1 {
+                font-size: 2.2rem;
+            }
+
+            .logo p {
+                font-size: 0.85rem;
+            }
+
+            .auth-tab {
+                font-size: 1rem;
+                padding: 0.75rem;
+            }
+
+            .input-group {
+                margin-bottom: 1.2rem;
+            }
+
+            .input-group label {
+                font-size: 0.9rem;
+            }
+
+            .input-group input {
+                padding: 0.85rem 1rem;
+                font-size: 1rem;
+            }
+
+            .auth-btn {
+                padding: 0.9rem;
+                font-size: 1rem;
+            }
+            
+            /* even bigger on desktop */
+            #google_translate_element select {
+                font-size: 1rem !important;
+                padding: 8px 14px !important;
+                min-width: 200px !important;
+            }
+            #google_translate_element::before {
+                font-size: 0.95rem;
+            }
+        }
+
+        @media (min-width: 768px) {
+            .login-card {
+                padding: 2.5rem;
+            }
+
+            .logo h1 {
+                font-size: 2.5rem;
+            }
+
+            .logo p {
+                font-size: 0.9rem;
+            }
+
+            .auth-tab {
+                font-size: 1.1rem;
+                padding: 0.8rem;
+            }
+
+            .input-group {
+                margin-bottom: 1.5rem;
+            }
+
+            .input-group input {
+                padding: 0.9rem 1rem;
+            }
+
+            .auth-btn {
+                padding: 1rem;
+                font-size: 1.1rem;
+            }
+            
+            #google_translate_element {
+                bottom: 28px;
+                right: 28px;
+                padding: 12px 20px;
+            }
+            #google_translate_element select {
+                min-width: 220px !important;
+                font-size: 1rem !important;
+                padding: 10px 16px !important;
+            }
+            #google_translate_element::before {
+                font-size: 1rem;
+                margin-right: 10px;
+            }
+        }
+
+        /* Touch-friendly adjustments for mobile */
+        @media (hover: none) and (pointer: coarse) {
+            .auth-tab, .auth-btn, .toggle-password {
+                cursor: default;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            .auth-tab:active {
+                opacity: 0.7;
+            }
+
+            .auth-btn:active {
+                transform: scale(0.97);
+            }
+        }
+
+        /* Small phone optimization */
+        @media (max-width: 380px) {
+            .login-card {
+                padding: 1.2rem;
+            }
+
+            .logo h1 {
+                font-size: 1.5rem;
+            }
+
+            .logo p {
+                font-size: 0.75rem;
+            }
+
+            .auth-tab {
+                font-size: 0.85rem;
+                padding: 0.5rem;
+            }
+
+            .input-group input {
+                padding: 0.65rem 0.8rem;
+                font-size: 0.9rem;
+            }
+
+            .auth-btn {
+                padding: 0.7rem;
+                font-size: 0.95rem;
+            }
+
+            .info-message {
+                font-size: 0.75rem;
+                padding: 0.7rem;
+            }
+        }
+
+        /* High resolution screens */
+        @media (min-width: 1200px) {
+            .login-container {
+                max-width: 550px;
+            }
+            #google_translate_element {
+                bottom: 35px;
+                right: 35px;
+            }
+            #google_translate_element select {
+                min-width: 240px !important;
+                font-size: 1.05rem !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <h1>🌳 Ancestral Threads</h1>
+                <p>trace your roots · honor your bloodline</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-form="login">🔐 Login</button>
+                <button class="auth-tab" data-form="signup">📝 Sign Up</button>
+            </div>
+
+            <div id="loginForm" class="auth-form active">
+                <div class="input-group">
+                    <label>👤 Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter your username" autocomplete="off">
+                </div>
+
+                <div class="input-group">
+                    <label>🔒 Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword" placeholder="Enter your password">
+                        <span class="toggle-password" onclick="togglePassword('loginPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <button class="auth-btn" id="loginBtn">Login 🌿</button>
+            </div>
+
+            <div id="signupForm" class="auth-form">
+                <div class="input-group">
+                    <label>👤 Username *</label>
+                    <input type="text" id="signupUsername" placeholder="Choose a username (min 3 characters)" autocomplete="off">
+                </div>
+
+                <div class="input-group">
+                    <label>📧 Email (optional)</label>
+                    <input type="email" id="signupEmail" placeholder="your@email.com">
+                </div>
+
+                <div class="input-group">
+                    <label>🔒 Password *</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="signupPassword" placeholder="Choose a password (min 6 characters)">
+                        <span class="toggle-password" onclick="togglePassword('signupPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>✓ Confirm Password *</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="confirmPassword" placeholder="Confirm your password">
+                        <span class="toggle-password" onclick="togglePassword('confirmPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <button class="auth-btn" id="signupBtn">Create Account ✨</button>
+            </div>
+
+            <div id="errorMessage" class="error-message"></div>
+            <div id="successMessage" class="success-message"></div>
+        </div>
+    </div>
+    <div class="admin-badge">🔐 Secure Authentication</div>
+<div id="google_translate_element"></div>
+<script src="goog_script.js"></script>
+<script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+<script src="auth.js"></script>
+</body>
+</html>
