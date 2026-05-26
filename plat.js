@@ -108,6 +108,38 @@ async function assignColorForFamily(familyName) {
     } catch(e) { console.warn('Color persist failed:', e); }
 }
 
+async function ensurePlaceholderExists() {
+    // The __na__ record is a silent depth anchor for unassigned members.
+    // It is filtered out of FAMILY_DB.people in loadPeople() so it
+    // never appears anywhere in the UI.
+    try {
+        const check = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.__na__&select=id`, {
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        const rows = await check.json();
+        if (!Array.isArray(rows) || rows.length === 0) {
+            const ins = await fetch(`${SUPABASE_URL}/rest/v1/people`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                           'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+                body: JSON.stringify({
+                    id: '__na__', uid: '__na__', name: 'N/A',
+                    gender: 'unknown', parents: '[]',
+                    is_root: false, family_name: null
+                })
+            });
+            if (!ins.ok) {
+                const err = await ins.text();
+                console.warn('Placeholder insert response:', ins.status, err);
+            } else {
+                console.log('✅ __na__ placeholder created');
+            }
+        } else {
+            console.log('✅ __na__ placeholder already exists');
+        }
+    } catch(e) { console.warn('Placeholder check failed:', e); }
+}
+
 async function loadFamilyColors() {
     try {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/family_colors?select=*`, {
@@ -239,7 +271,9 @@ async function loadPeople() {
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    FAMILY_DB.people = await res.json();
+    const allPeople = await res.json();
+    // Always filter out the hidden placeholder — it must never appear in the UI
+    FAMILY_DB.people = allPeople.filter(p => !p.id.startsWith('__'));
     populateParentDropdowns();
     populateFamilyNameDropdown();
     loadPersonOwners();
@@ -735,9 +769,18 @@ function buildWholeTreeRows(cluster) {
     // the tree renderer simply uses parent-child relationships.
     function depth(person) {
         if (depthCache.has(person.id)) return depthCache.get(person.id);
-        const clusterParents = getParentsArray(person).filter(pid => clusterIds.has(pid));
-        if (!clusterParents.length) {
+        const allParents    = getParentsArray(person);
+        const clusterParents = allParents.filter(pid => clusterIds.has(pid));
+
+        // If the person has NO parent IDs at all → true root, depth 0
+        // If they have parent IDs but none are visible cluster members
+        // (e.g. only __na__ placeholder) → still push them to depth 1
+        // so they don't float up alongside real roots
+        if (!allParents.length) {
             depthCache.set(person.id, 0); return 0;
+        }
+        if (!clusterParents.length) {
+            depthCache.set(person.id, 1); return 1;
         }
         const parentDepths = clusterParents
             .map(pid => { const par = findPersonById(pid); return par ? depth(par) : 0; });
@@ -912,10 +955,15 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
     if (placement === 'above') {
         section.innerHTML = `${aboveNote}
             <div class="form-group" style="margin-top:0.75rem;">
-                <label>Their child in Generation ${genNum} *</label>
-                <select id="wtChildLink" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                    <option value="">-- Select child --</option>${rowOpts}
+                <label>Their child(ren) from Generation ${genNum} *</label>
+                <select id="wtAboveChildren" multiple
+                        style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;min-height:90px;">
+                    ${rowOpts}
                 </select>
+                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                    Hold Ctrl / Cmd to select multiple. Only selected members will be re-parented —
+                    unselected members stay as roots and are unaffected.
+                </div>
             </div>`;
     } else if (placement === 'within') {
         section.innerHTML = `
@@ -974,16 +1022,60 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
 
     try {
         if (placement === 'above') {
-            const childLinkId = document.getElementById('wtChildLink')?.value || '';
-            if (!childLinkId) return showErr('Please select which member will be their child.');
-            await addPersonToDB({ id:newId, uid, name, gender, dob:dob||null, parents:JSON.stringify([]), is_root:isOldest, family_name:familyName });
-            await loadPeople();
-            const child = findPersonById(childLinkId);
-            if (child) {
-                const updated = [...new Set([...getParentsArray(child), newId])];
-                await updatePersonInDB(childLinkId, { parents: JSON.stringify(updated) });
-                if (isRootPerson(child)) await updatePersonInDB(childLinkId, { is_root: false });
+            // Only re-parent the children the user explicitly selected.
+            // Unselected members of that generation stay untouched as roots.
+            const selectedChildren = Array.from(
+                document.getElementById('wtAboveChildren')?.selectedOptions || []
+            ).map(o => o.value).filter(Boolean);
+
+            if (!selectedChildren.length)
+                return showErr('Please select at least one child from the generation below.');
+
+            // Snapshot selected children BEFORE any writes
+            const selectedMembers = selectedChildren
+                .map(id => FAMILY_DB.people.find(p => p.id === id))
+                .filter(Boolean);
+
+            // Add the new person as a root (no parents)
+            await addPersonToDB({
+                id: newId, uid, name, gender, dob: dob||null,
+                parents: JSON.stringify([]),
+                is_root: true,
+                family_name: familyName
+            });
+
+            // Re-parent selected children to the new root
+            for (const member of selectedMembers) {
+                const updatedParents = [...new Set([...getParentsArray(member), newId])];
+                await updatePersonInDB(member.id, {
+                    parents: JSON.stringify(updatedParents),
+                    is_root: false
+                });
             }
+
+            // Unselected members get the hidden __na__ placeholder as their parent.
+            // This pushes them to depth 1 (generation 2) without displaying
+            // any false relationship on the tree. __na__ is filtered out of FAMILY_DB
+            // so it never appears as a visible node.
+            const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
+            const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
+            for (const uid2 of unselected) {
+                const member = FAMILY_DB.people.find(p => p.id === uid2);
+                if (!member) continue;
+                const existingParents = getParentsArray(member);
+                // Only stamp __na__ if they have no real visible parent yet.
+                // A "real" parent is one that exists in FAMILY_DB (not __na__ itself).
+                const hasRealParent = existingParents.some(pid =>
+                    pid !== '__na__' && FAMILY_DB.people.find(p => p.id === pid)
+                );
+                if (!hasRealParent) {
+                    await updatePersonInDB(uid2, {
+                        parents: JSON.stringify(['__na__']),
+                        is_root: false
+                    });
+                }
+            }
+
         } else if (placement === 'within') {
             const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
             const p1 = document.getElementById('wtParent1')?.value || '';
@@ -993,28 +1085,47 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (p1) parentIds.push(p1);
             if (p2 && p2 !== p1) parentIds.push(p2);
             if (!parentIds.length && siblingRefId) {
-                const sib = findPersonById(siblingRefId);
+                const sib = FAMILY_DB.people.find(p => p.id === siblingRefId);
                 if (sib) parentIds = getParentsArray(sib);
             }
             if (!parentIds.length) {
                 const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
-                for (const sid of rowIds) { const s = findPersonById(sid); if (s) { const sp = getParentsArray(s); if (sp.length) { parentIds = sp; break; } } }
+                for (const sid of rowIds) {
+                    const s = FAMILY_DB.people.find(p => p.id === sid);
+                    if (s) { const sp = getParentsArray(s); if (sp.length) { parentIds = sp; break; } }
+                }
             }
-            await addPersonToDB({ id:newId, uid, name, gender, dob:dob||null, parents:JSON.stringify(parentIds), is_root:parentIds.length===0&&depthIdx===0, family_name:familyName });
-            await loadPeople();
+            await addPersonToDB({
+                id: newId, uid, name, gender, dob: dob||null,
+                parents: JSON.stringify(parentIds),
+                is_root: parentIds.length === 0 && depthIdx === 0,
+                family_name: familyName
+            });
+            // Wire up any explicitly chosen children
             for (const cid of childLinks) {
-                const child = findPersonById(cid);
-                if (child) await updatePersonInDB(cid, { parents: JSON.stringify([...new Set([...getParentsArray(child), newId])]) });
+                const child = FAMILY_DB.people.find(p => p.id === cid);
+                if (child) {
+                    await updatePersonInDB(cid, {
+                        parents: JSON.stringify([...new Set([...getParentsArray(child), newId])])
+                    });
+                }
             }
+
         } else if (placement === 'below') {
             const pl1 = document.getElementById('wtParentLink1')?.value || '';
             const pl2 = document.getElementById('wtParentLink2')?.value || '';
             if (!pl1) return showErr('Please select at least one parent.');
-            const parentIds = [pl1]; if (pl2 && pl2 !== pl1) parentIds.push(pl2);
-            await addPersonToDB({ id:newId, uid, name, gender, dob:dob||null, parents:JSON.stringify(parentIds), is_root:false, family_name:familyName });
-            await loadPeople();
+            const parentIds = [pl1];
+            if (pl2 && pl2 !== pl1) parentIds.push(pl2);
+            await addPersonToDB({
+                id: newId, uid, name, gender, dob: dob||null,
+                parents: JSON.stringify(parentIds),
+                is_root: false,
+                family_name: familyName
+            });
         }
 
+        // Single reload at the very end, after all DB writes are complete
         await loadPeople();
         personOwners[newId] = currentUser; savePersonOwners();
         closeWholeTreeAddModal();
@@ -1032,21 +1143,29 @@ async function addOrGetPerson(nameOrRef, gender = 'unknown', familyName = null) 
     const isRef = typeof nameOrRef === 'object';
     const name  = isRef ? nameOrRef.name : nameOrRef;
     const existingId = isRef ? nameOrRef.id : null;
+
+    // If selected from dropdown, return the existing record directly
     if (existingId) return findPersonById(existingId);
 
     const v = validateFullName(name);
-    if (!v.valid) { showError('contributeErrorMsg', v.message); return null; }
+    if (!v.valid) throw new Error(v.message);
 
+    // If exactly one person with this name already exists, reuse them
     const exactMatches = findPeopleByName(name);
     if (exactMatches.length === 1) return exactMatches[0];
 
+    // Create new person — always with a fresh uid so same names never collide
     const uid = generateUID(), newId = makePersonId(name, uid);
-    if (familyName) await assignColorForFamily(familyName);
-    try {
-        await addPersonToDB({ id:newId, uid, name, gender, parents:JSON.stringify([]), is_root:false, family_name:familyName });
-        await loadPeople();
-        return findPersonById(newId);
-    } catch(e) { console.error('addOrGetPerson failed:', e); return null; }
+    // No loadPeople() here — caller does one reload at the end
+    await addPersonToDB({
+        id: newId, uid, name, gender,
+        parents: JSON.stringify([]),
+        is_root: false,
+        family_name: familyName
+    });
+    // Return a local object so the caller can use the id immediately
+    // without waiting for a DB reload
+    return { id: newId, uid, name, gender, parents: '[]', is_root: false, family_name: familyName };
 }
 
 async function contributeToTree(event) {
@@ -1074,26 +1193,32 @@ async function contributeToTree(event) {
     showSuccess('contributeSuccessMsg', 'Adding to the family tree…');
 
     try {
+        // Assign color first so it's ready before any person is written
+        if (familyName) await assignColorForFamily(familyName);
+
+        // Add father and mother without intermediate reloads.
+        // addOrGetPerson now returns a local object immediately after the DB write.
         let parentIds = [];
         if (fatherRef) {
-            const fv = validateFullName(fatherRef.name);
-            if (!fv.valid) { showError('contributeErrorMsg', `Father: ${fv.message}`); return; }
             const father = await addOrGetPerson(fatherRef, 'male', familyName);
             if (father) parentIds.push(father.id);
         }
         if (motherRef) {
-            const mv = validateFullName(motherRef.name);
-            if (!mv.valid) { showError('contributeErrorMsg', `Mother: ${mv.message}`); return; }
             const mother = await addOrGetPerson(motherRef, 'female', familyName);
             if (mother) parentIds.push(mother.id);
         }
 
-        if (familyName) await assignColorForFamily(familyName);
-
+        // Add the child (the person filling the form)
         const uid = generateUID(), newId = makePersonId(userName, uid);
         const autoRoot = parentIds.length === 0;
-        await addPersonToDB({ id:newId, uid, name:userName, gender:userGender, dob:userDob,
-                              parents:JSON.stringify(parentIds), is_root:autoRoot, family_name:familyName });
+        await addPersonToDB({
+            id: newId, uid, name: userName, gender: userGender, dob: userDob,
+            parents: JSON.stringify(parentIds),
+            is_root: autoRoot,
+            family_name: familyName
+        });
+
+        // Single reload after ALL three writes are done
         await loadPeople();
         personOwners[newId] = currentUser; savePersonOwners();
 
@@ -1107,7 +1232,6 @@ async function contributeToTree(event) {
         ['fatherSelect','motherSelect'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
         if (fatherMode === 'select') toggleParentMode('father');
         if (motherMode === 'select') toggleParentMode('mother');
-        // Reset family name field
         const fnInp = document.getElementById('familyNameInput');
         const fnSel = document.getElementById('familyNameSelect');
         if (fnInp) fnInp.value = '';
@@ -1255,6 +1379,7 @@ function setupEventListeners() {
 async function init() {
     if (!checkAuth()) return;
     try {
+        await ensurePlaceholderExists();
         await loadFamilyColors();
         await loadPeople();
         if (isAdmin) await updateAdminPanel();
