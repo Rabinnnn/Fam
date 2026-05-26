@@ -463,6 +463,19 @@ function buildNodeHtml(person, extraClass = '', onClick = null) {
             </div>`;
 }
 
+// Checkbox row used in multi-pick modals
+function buildCheckboxRow(person, cssClass) {
+    const uidBadge = person.uid ? ` <span style="font-size:0.65rem;color:#b08052;">#${person.uid}</span>` : '';
+    return `<label style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.5rem;
+                           border-radius:0.5rem;cursor:pointer;transition:background 0.15s;"
+                   onmouseover="this.style.background='#fef3e2'"
+                   onmouseout="this.style.background='transparent'">
+                <input type="checkbox" class="${cssClass}" value="${person.id}"
+                       style="width:auto;cursor:pointer;accent-color:#c2894b;">
+                <span style="font-size:0.85rem;">${escapeHtml(person.name)}${uidBadge}</span>
+            </label>`;
+}
+
 // ==============================================================
 // DISAMBIGUATION MODAL
 // ==============================================================
@@ -937,10 +950,11 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
             </div>
         </div>`);
 
-    window._wtRowIds = rowIds;
-    window._wtAllOpts = allOpts;
-    window._wtRowOpts = rowOpts;
+    window._wtRowIds    = rowIds;
+    window._wtAllOpts   = allOpts;
+    window._wtRowOpts   = rowOpts;
     window._wtAboveNote = aboveNote;
+    window._wtAllPeople = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name));
 
     document.getElementById('wtDob')?.addEventListener('click', function() { this.showPicker(); });
 };
@@ -953,16 +967,22 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
     const aboveNote = window._wtAboveNote || '';
     if (!placement) { section.innerHTML = ''; return; }
     if (placement === 'above') {
+        // Build checkbox list from rowIds
+        const aboveCheckboxes = (window._wtRowIds || [])
+            .map(id => { const p = FAMILY_DB.people.find(x => x.id === id); return p ? buildCheckboxRow(p, 'wt-above-child') : ''; })
+            .join('');
+
         section.innerHTML = `${aboveNote}
             <div class="form-group" style="margin-top:0.75rem;">
                 <label>Their child(ren) from Generation ${genNum} *</label>
-                <select id="wtAboveChildren" multiple
-                        style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;min-height:90px;">
-                    ${rowOpts}
-                </select>
+                <div id="wtAboveChildrenWrap"
+                     style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
+                            max-height:160px;overflow-y:auto;background:white;">
+                    ${aboveCheckboxes || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
+                </div>
                 <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
-                    Hold Ctrl / Cmd to select multiple. Only selected members will be re-parented —
-                    unselected members stay as roots and are unaffected.
+                    Tick the members who are children of the new person.
+                    Unticked members stay as roots and are unaffected.
                 </div>
             </div>`;
     } else if (placement === 'within') {
@@ -981,10 +1001,12 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
             </div>
             <div class="form-group">
                 <label>Child(ren) <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
-                <select id="wtChildLink2" multiple style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;min-height:80px;">
-                    ${allOpts}
-                </select>
-                <div style="font-size:0.68rem;color:#888;margin-top:0.2rem;">Hold Ctrl/Cmd to select multiple</div>
+                <div id="wtChildLink2Wrap"
+                     style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
+                            max-height:160px;overflow-y:auto;background:white;">
+                    ${(window._wtAllPeople||[]).map(p => buildCheckboxRow(p, 'wt-child-link2')).join('')}
+                </div>
+                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">Tick the members who will be children of the new person.</div>
             </div>`;
     } else if (placement === 'below') {
         section.innerHTML = `
@@ -1025,7 +1047,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             // Only re-parent the children the user explicitly selected.
             // Unselected members of that generation stay untouched as roots.
             const selectedChildren = Array.from(
-                document.getElementById('wtAboveChildren')?.selectedOptions || []
+                document.querySelectorAll('.wt-above-child:checked') || []
             ).map(o => o.value).filter(Boolean);
 
             if (!selectedChildren.length)
@@ -1080,7 +1102,9 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
             const p1 = document.getElementById('wtParent1')?.value || '';
             const p2 = document.getElementById('wtParent2')?.value || '';
-            const childLinks = Array.from(document.getElementById('wtChildLink2')?.selectedOptions||[]).map(o=>o.value);
+            const childLinks = Array.from(
+                document.querySelectorAll('.wt-child-link2:checked') || []
+            ).map(o => o.value);
             let parentIds = [];
             if (p1) parentIds.push(p1);
             if (p2 && p2 !== p1) parentIds.push(p2);
