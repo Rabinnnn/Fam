@@ -7,30 +7,31 @@ const SUPABASE_ANON_KEY = 'sb_publishable_-IHen1e8xLiVH9_mJBpKmA_0GQSRFJx';
 let currentUser = null;
 let isAdmin = false;
 let FAMILY_DB = { people: [] };
-
+let FAMILY_COLORS = {};   // family_name → hex color
 let fatherMode = 'manual';
 let motherMode = 'manual';
-
 let personOwners = {};
+
+// Predefined palette — warm, distinguishable, accessible
+const COLOR_PALETTE = [
+    '#c2894b','#5a7abf','#6aaa6a','#c2607a','#8f6abf',
+    '#bf9a3a','#3aabab','#bf5a3a','#7a8fbf','#7abf6a',
+    '#bf3a7a','#3a7abf','#bfaa3a','#6abfbf','#bf6a3a',
+    '#a06abf','#3abf7a','#bf3a3a','#3a6abf','#bf7a6a'
+];
 
 // ==============================================================
 // UNIQUE ID GENERATION
-// Returns a short random alphanumeric string, e.g. "a3f9k"
 // ==============================================================
 function generateUID() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let uid = '';
-    for (let i = 0; i < 5; i++) {
-        uid += chars[Math.floor(Math.random() * chars.length)];
-    }
+    for (let i = 0; i < 5; i++) uid += chars[Math.floor(Math.random() * chars.length)];
     return uid;
 }
 
-// Build a DB-safe record ID from a name + uid
-// e.g. "John Smith" + "a3f9k" → "john_smith_a3f9k"
 function makePersonId(name, uid) {
-    const base = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
-    return `${base}_${uid}`;
+    return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + uid;
 }
 
 // ==============================================================
@@ -38,9 +39,8 @@ function makePersonId(name, uid) {
 // ==============================================================
 function loadPersonOwners() {
     const saved = localStorage.getItem('person_owners');
-    if (saved) personOwners = JSON.parse(saved);
+    if (saved) try { personOwners = JSON.parse(saved); } catch {}
 }
-
 function savePersonOwners() {
     localStorage.setItem('person_owners', JSON.stringify(personOwners));
 }
@@ -50,70 +50,153 @@ function savePersonOwners() {
 // ==============================================================
 function showError(elementId, message) {
     const el = document.getElementById(elementId);
-    if (el) {
-        el.textContent = `❌ ${message}`;
-        el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), 5000);
-    }
+    if (el) { el.textContent = `❌ ${message}`; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 5000); }
     console.error('ERROR:', message);
 }
-
 function showSuccess(elementId, message) {
     const el = document.getElementById(elementId);
-    if (el) {
-        el.textContent = `✅ ${message}`;
-        el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), 3000);
-    }
-    console.log('SUCCESS:', message);
+    if (el) { el.textContent = `✅ ${message}`; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000); }
 }
-
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>"']/g, m => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[m]);
+    return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]);
+}
+function validateFullName(name) {
+    const t = name.trim();
+    if (!t) return { valid: false, message: 'Name cannot be empty' };
+    const p = t.split(/\s+/);
+    if (p.length < 2) return { valid: false, message: 'Please enter both first and last name' };
+    if (p.length > 5) return { valid: false, message: 'Name seems too long' };
+    return { valid: true, message: '' };
 }
 
 // ==============================================================
-// VALIDATION
+// COLOR HELPERS
 // ==============================================================
-function validateFullName(name) {
-    const trimmed = name.trim();
-    if (!trimmed) return { valid: false, message: 'Name cannot be empty' };
-    const parts = trimmed.split(/\s+/);
-    if (parts.length < 2) return { valid: false, message: 'Please enter both first and last name' };
-    if (parts.length > 5) return { valid: false, message: 'Name seems too long. Please enter a valid name.' };
-    return { valid: true, message: '' };
+function getColorForFamily(familyName) {
+    if (!familyName) return '#e8dcc8';
+    return FAMILY_COLORS[familyName] || '#e8dcc8';
 }
+
+// Returns a readable text color (dark/light) for a given bg hex
+function getTextColor(hex) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    const luminance = (0.299*r + 0.587*g + 0.114*b) / 255;
+    return luminance > 0.55 ? '#3a2010' : '#fff8f0';
+}
+
+async function assignColorForFamily(familyName) {
+    if (!familyName || FAMILY_COLORS[familyName]) return;
+    const usedColors = Object.values(FAMILY_COLORS);
+    const available = COLOR_PALETTE.filter(c => !usedColors.includes(c));
+    const color = available.length > 0 ? available[0] : COLOR_PALETTE[Object.keys(FAMILY_COLORS).length % COLOR_PALETTE.length];
+    FAMILY_COLORS[familyName] = color;
+    // Persist to DB
+    try {
+        await fetch(`${SUPABASE_URL}/rest/v1/family_colors`, {
+            method: 'POST',
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify({ family_name: familyName, color })
+        });
+    } catch(e) { console.warn('Color persist failed:', e); }
+}
+
+async function loadFamilyColors() {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/family_colors?select=*`, {
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            data.forEach(row => { FAMILY_COLORS[row.family_name] = row.color; });
+        }
+    } catch(e) { console.warn('Color load failed:', e); }
+}
+
+function renderLegend(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const families = Object.keys(FAMILY_COLORS);
+    if (!families.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.75rem;
+                    padding:0.6rem 0.8rem;background:#fcf8ef;border-radius:0.75rem;border:1px solid #e2cfb0;">
+            <span style="font-size:0.75rem;font-weight:700;color:#5a3e2b;margin-right:0.25rem;">Legend:</span>
+            ${families.map(fn => {
+                const bg = FAMILY_COLORS[fn];
+                const tx = getTextColor(bg);
+                return `<span style="background:${bg};color:${tx};padding:0.2rem 0.6rem;
+                               border-radius:1rem;font-size:0.72rem;font-weight:600;">
+                            ${escapeHtml(fn)}
+                        </span>`;
+            }).join('')}
+        </div>`;
+}
+
+// ==============================================================
+// FAMILY NAME FIELD HELPERS
+// ==============================================================
+function populateFamilyNameDropdown() {
+    const sel = document.getElementById('familyNameSelect');
+    if (!sel) return;
+    const existing = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">-- Select existing family --</option>';
+    existing.forEach(fn => {
+        const opt = document.createElement('option');
+        opt.value = fn; opt.textContent = fn;
+        sel.appendChild(opt);
+    });
+}
+
+// Returns the family name from the contribute form
+function getFamilyNameValue() {
+    const sel = document.getElementById('familyNameSelect');
+    const inp = document.getElementById('familyNameInput');
+    const mode = document.getElementById('familyNameMode')?.value || 'new';
+    if (mode === 'existing' && sel) return sel.value.trim();
+    if (inp) return inp.value.trim();
+    return '';
+}
+
+window.toggleFamilyNameMode = function() {
+    const sel  = document.getElementById('familyNameSelect');
+    const inp  = document.getElementById('familyNameInput');
+    const btn  = document.getElementById('familyNameToggleBtn');
+    const mode = document.getElementById('familyNameMode');
+    if (!sel || !inp || !mode) return;
+    if (mode.value === 'new') {
+        sel.style.display = 'block'; inp.style.display = 'none';
+        btn.textContent = '✏️ Enter New Name'; mode.value = 'existing';
+    } else {
+        sel.style.display = 'none'; inp.style.display = 'block';
+        btn.textContent = '📋 Choose Existing'; mode.value = 'new';
+    }
+};
 
 // ==============================================================
 // PARENT DROPDOWN HELPERS
 // ==============================================================
 function populateParentDropdowns() {
-    const fatherSelect = document.getElementById('fatherSelect');
-    const motherSelect = document.getElementById('motherSelect');
-    if (!fatherSelect || !motherSelect) return;
-
-    // Sort people alphabetically by display name
-    const sorted = [...FAMILY_DB.people].sort((a, b) =>
-        (a.name || '').localeCompare(b.name || ''));
-
-    fatherSelect.innerHTML = '<option value="">-- Select Father from existing records --</option>';
-    motherSelect.innerHTML = '<option value="">-- Select Mother from existing records --</option>';
-
-    sorted.forEach(person => {
-        const label = person.uid ? `${person.name} [#${person.uid}]` : person.name;
-
-        const fo = document.createElement('option');
-        fo.value = person.id;        // store DB id, not name
-        fo.textContent = label;
-        fatherSelect.appendChild(fo);
-
-        const mo = document.createElement('option');
-        mo.value = person.id;
-        mo.textContent = label;
-        motherSelect.appendChild(mo);
+    const fSel = document.getElementById('fatherSelect');
+    const mSel = document.getElementById('motherSelect');
+    if (!fSel || !mSel) return;
+    const sorted = [...FAMILY_DB.people].sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    fSel.innerHTML = '<option value="">-- Select Father from existing records --</option>';
+    mSel.innerHTML = '<option value="">-- Select Mother from existing records --</option>';
+    sorted.forEach(p => {
+        const label = `${p.name}${p.uid ? ` [#${p.uid}]` : ''}`;
+        [fSel, mSel].forEach(sel => {
+            const opt = document.createElement('option');
+            opt.value = p.id; opt.textContent = label;
+            sel.appendChild(opt);
+        });
     });
 }
 
@@ -122,204 +205,145 @@ function toggleParentMode(parent) {
     const inp = document.getElementById(`${parent}Name`);
     const btn = document.querySelector(`#${parent}Container .toggle-mode-btn`);
     const ind = document.getElementById(`${parent}ModeIndicator`);
-
-    const currentMode = parent === 'father' ? fatherMode : motherMode;
-
-    if (currentMode === 'manual') {
-        sel.style.display = 'block';
-        inp.style.display = 'none';
-        inp.value = '';
+    const mode = parent === 'father' ? fatherMode : motherMode;
+    if (mode === 'manual') {
+        sel.style.display = 'block'; inp.style.display = 'none'; inp.value = '';
         btn.textContent = '✏️ Enter Manually';
-        ind.innerHTML = '📋 Select mode - choose from existing records';
-        if (parent === 'father') fatherMode = 'select';
-        else motherMode = 'select';
+        ind.innerHTML = '📋 Select mode';
+        if (parent === 'father') fatherMode = 'select'; else motherMode = 'select';
     } else {
-        sel.style.display = 'none';
-        inp.style.display = 'block';
-        sel.value = '';
+        sel.style.display = 'none'; inp.style.display = 'block'; sel.value = '';
         btn.textContent = '📋 Use Existing';
-        ind.innerHTML = '✏️ Manual entry mode (type any name)';
-        if (parent === 'father') fatherMode = 'manual';
-        else motherMode = 'manual';
+        ind.innerHTML = '✏️ Manual entry mode';
+        if (parent === 'father') fatherMode = 'manual'; else motherMode = 'manual';
     }
 }
 
-// Returns { id, name } for the selected/typed parent, or null
 function getParentValue(parent) {
     const mode = parent === 'father' ? fatherMode : motherMode;
     if (mode === 'select') {
-        const selectEl = document.getElementById(`${parent}Select`);
-        const selectedId = selectEl.value;
-        if (!selectedId) return null;
-        const person = FAMILY_DB.people.find(p => p.id === selectedId);
-        return person ? { id: person.id, name: person.name } : null;
-    } else {
-        const raw = document.getElementById(`${parent}Name`).value.trim();
-        if (!raw) return null;
-        return { id: null, name: raw }; // id resolved later
+        const id = document.getElementById(`${parent}Select`).value;
+        if (!id) return null;
+        const p = FAMILY_DB.people.find(x => x.id === id);
+        return p ? { id: p.id, name: p.name } : null;
     }
+    const raw = document.getElementById(`${parent}Name`).value.trim();
+    return raw ? { id: null, name: raw } : null;
 }
 
 // ==============================================================
-// SUPABASE API CALLS
+// SUPABASE API
 // ==============================================================
 async function loadPeople() {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/people?select=*`, {
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-        }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/people?select=*`, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    const data = await response.json();
-    FAMILY_DB.people = data;
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    FAMILY_DB.people = await res.json();
     populateParentDropdowns();
+    populateFamilyNameDropdown();
     loadPersonOwners();
-    return data;
+    return FAMILY_DB.people;
 }
 
 async function addPersonToDB(person) {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/people`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/people`, {
         method: 'POST',
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-        },
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                   'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify(person)
     });
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-    if (!personOwners[person.id]) {
-        personOwners[person.id] = currentUser;
-        savePersonOwners();
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    if (!personOwners[person.id]) { personOwners[person.id] = currentUser; savePersonOwners(); }
     return true;
 }
 
 async function updatePersonInDB(personId, updates) {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
         method: 'PATCH',
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-        },
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                   'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
     });
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
     return true;
 }
 
 async function deletePersonFromDB(personId) {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
         method: 'DELETE',
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        }
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    delete personOwners[personId];
-    savePersonOwners();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    delete personOwners[personId]; savePersonOwners();
     return true;
 }
 
 // ==============================================================
 // LOOKUP HELPERS
 // ==============================================================
-function findPersonById(id) {
-    return FAMILY_DB.people.find(p => p.id === id) || null;
-}
-
-// Finds by exact name match — returns ALL matches (for disambiguation display)
+function findPersonById(id) { return FAMILY_DB.people.find(p => p.id === id) || null; }
 function findPeopleByName(name) {
-    const lower = name.trim().toLowerCase();
-    return FAMILY_DB.people.filter(p => p.name.trim().toLowerCase() === lower);
+    const l = name.trim().toLowerCase();
+    return FAMILY_DB.people.filter(p => p.name.trim().toLowerCase() === l);
 }
-
-// For search: exact first, then partial
-function findPersonByPartialName(searchTerm) {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return null;
-    const exact = FAMILY_DB.people.find(p => p.name.toLowerCase() === term);
-    if (exact) return exact;
-    const partial = FAMILY_DB.people.filter(p => p.name.toLowerCase().includes(term));
-    return partial.length > 0 ? partial[0] : null;
+function findAllByPartialName(term) {
+    const l = term.trim().toLowerCase();
+    return l ? FAMILY_DB.people.filter(p => p.name.toLowerCase().includes(l)) : [];
 }
+function canEditPerson(id) { return isAdmin || personOwners[id] === currentUser; }
+function isRootPerson(p) { return p.is_root === true || p.is_root === 'true'; }
 
-// Returns all people whose name contains searchTerm (for disambiguation)
-function findAllByPartialName(searchTerm) {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return [];
-    return FAMILY_DB.people.filter(p => p.name.toLowerCase().includes(term));
-}
-
-function canEditPerson(personId) {
-    return isAdmin || personOwners[personId] === currentUser;
-}
-
-// ==============================================================
-// GENERATION / ANCESTRY HELPERS
-// ==============================================================
 function getParentsArray(person) {
-    if (!person || !person.parents) return [];
+    if (!person?.parents) return [];
     try {
-        const arr = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
-        return Array.isArray(arr) ? arr : [];
+        const a = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
+        return Array.isArray(a) ? a : [];
     } catch { return []; }
 }
 
+// ==============================================================
+// TREE TRAVERSAL
+// ==============================================================
 function getAncestors(person, visited = new Set()) {
     if (!person || visited.has(person.id)) return [];
     visited.add(person.id);
-    let result = [person];
+    let r = [person];
     for (const pid of getParentsArray(person)) {
         const par = findPersonById(pid);
-        if (par) result = result.concat(getAncestors(par, visited));
+        if (par) r = r.concat(getAncestors(par, visited));
     }
-    return result;
+    return r;
 }
 
 function getDescendants(person, visited = new Set()) {
     if (!person || visited.has(person.id)) return [];
     visited.add(person.id);
-    let result = [person];
-    const children = FAMILY_DB.people.filter(p =>
-        getParentsArray(p).includes(person.id));
-    for (const child of children) {
-        result = result.concat(getDescendants(child, visited));
-    }
-    return result;
+    let r = [person];
+    for (const child of FAMILY_DB.people.filter(p => getParentsArray(p).includes(person.id)))
+        r = r.concat(getDescendants(child, visited));
+    return r;
 }
 
 function getGenerationDepth(person, visited = new Set()) {
     if (!person || visited.has(person.id)) return 0;
     visited.add(person.id);
-    let maxDepth = 0;
+    let max = 0;
     for (const pid of getParentsArray(person)) {
         const par = findPersonById(pid);
-        if (par) maxDepth = Math.max(maxDepth, getGenerationDepth(par, visited) + 1);
+        if (par) max = Math.max(max, getGenerationDepth(par, visited) + 1);
     }
-    return maxDepth;
+    return max;
 }
 
 function getPersonGenerationLevel(person) {
-    let depth = 0;
-    let current = person;
+    let depth = 0, current = person;
     const seen = new Set();
     while (current) {
         if (seen.has(current.id)) break;
         seen.add(current.id);
         const parents = getParentsArray(current);
-        if (parents.length === 0) break;
+        if (!parents.length) break;
         depth++;
         current = findPersonById(parents[0]);
     }
@@ -328,66 +352,50 @@ function getPersonGenerationLevel(person) {
 
 async function validateParentsGeneration(fatherRef, motherRef) {
     if (!fatherRef || !motherRef) return { valid: true, message: '' };
-    const fatherPerson = fatherRef.id ? findPersonById(fatherRef.id) : findPeopleByName(fatherRef.name)[0];
-    const motherPerson = motherRef.id ? findPersonById(motherRef.id) : findPeopleByName(motherRef.name)[0];
-    if (!fatherPerson || !motherPerson) return { valid: true, message: '' };
-    const fg = getPersonGenerationLevel(fatherPerson);
-    const mg = getPersonGenerationLevel(motherPerson);
-    if (fg !== mg) {
-        return {
-            valid: false,
-            message: `Generation mismatch: "${fatherPerson.name}" is in generation ${fg + 1}, but "${motherPerson.name}" is in generation ${mg + 1}. Parents must be from the SAME generation.`
-        };
-    }
+    const fp = fatherRef.id ? findPersonById(fatherRef.id) : findPeopleByName(fatherRef.name)[0];
+    const mp = motherRef.id ? findPersonById(motherRef.id) : findPeopleByName(motherRef.name)[0];
+    if (!fp || !mp) return { valid: true, message: '' };
+    const fg = getPersonGenerationLevel(fp), mg = getPersonGenerationLevel(mp);
+    if (fg !== mg) return { valid: false, message: `Generation mismatch: "${fp.name}" is Gen ${fg+1} but "${mp.name}" is Gen ${mg+1}. Parents must be from the same generation.` };
     return { valid: true, message: '' };
 }
 
 // ==============================================================
-// CLUSTER / FAMILY GROUP DETECTION
+// CLUSTER DETECTION  (uses family_name for grouping)
 // ==============================================================
 function findFamilyClusters() {
-    const adjacency = new Map();
-    FAMILY_DB.people.forEach(p => adjacency.set(p.id, new Set()));
-
-    FAMILY_DB.people.forEach(person => {
-        for (const pid of getParentsArray(person)) {
-            if (adjacency.has(pid)) {
-                adjacency.get(pid).add(person.id);
-                adjacency.get(person.id).add(pid);
-            }
+    const adj = new Map();
+    FAMILY_DB.people.forEach(p => adj.set(p.id, new Set()));
+    FAMILY_DB.people.forEach(p => {
+        for (const pid of getParentsArray(p)) {
+            if (adj.has(pid)) { adj.get(pid).add(p.id); adj.get(p.id).add(pid); }
         }
     });
-
-    // Link by shared family_group
-    const groupMap = new Map();
-    FAMILY_DB.people.forEach(person => {
-        if (person.family_group) {
-            if (!groupMap.has(person.family_group)) groupMap.set(person.family_group, []);
-            groupMap.get(person.family_group).push(person.id);
+    // Link by shared family_name
+    const fnMap = new Map();
+    FAMILY_DB.people.forEach(p => {
+        if (p.family_name) {
+            if (!fnMap.has(p.family_name)) fnMap.set(p.family_name, []);
+            fnMap.get(p.family_name).push(p.id);
         }
     });
-    groupMap.forEach(ids => {
+    fnMap.forEach(ids => {
         for (let i = 0; i < ids.length - 1; i++) {
-            if (adjacency.has(ids[i]) && adjacency.has(ids[i + 1])) {
-                adjacency.get(ids[i]).add(ids[i + 1]);
-                adjacency.get(ids[i + 1]).add(ids[i]);
+            if (adj.has(ids[i]) && adj.has(ids[i+1])) {
+                adj.get(ids[i]).add(ids[i+1]); adj.get(ids[i+1]).add(ids[i]);
             }
         }
     });
-
-    const visited = new Set();
-    const clusters = [];
-
+    const visited = new Set(), clusters = [];
     for (const person of FAMILY_DB.people) {
         if (!visited.has(person.id)) {
-            const cluster = [];
-            const queue = [person.id];
+            const cluster = [], queue = [person.id];
             visited.add(person.id);
             while (queue.length) {
                 const cid = queue.shift();
                 const cp = findPersonById(cid);
                 if (cp) cluster.push(cp);
-                for (const nid of (adjacency.get(cid) || [])) {
+                for (const nid of (adj.get(cid) || [])) {
                     if (!visited.has(nid)) { visited.add(nid); queue.push(nid); }
                 }
             }
@@ -398,71 +406,209 @@ function findFamilyClusters() {
 }
 
 function clusterFamilyName(cluster) {
-    const roots = cluster.filter(p => getParentsArray(p).length === 0);
-    const base = roots.length > 0 ? roots[0] : cluster[0];
-    if (!base || !base.name) return 'Unknown Family';
+    const roots = cluster.filter(isRootPerson);
+    const base  = roots.length ? roots[0] : cluster[0];
+    if (!base?.name) return 'Unknown Family';
     const parts = base.name.split(' ');
     return parts[parts.length - 1] + ' Family';
 }
 
 // ==============================================================
+// NODE BUILDER  — colored by family_name
+// ==============================================================
+function buildNodeHtml(person, extraClass = '', onClick = null) {
+    const bg      = getColorForFamily(person.family_name);
+    const tx      = getTextColor(bg);
+    const uid     = person.uid ? `<span style="display:block;font-size:0.6rem;opacity:0.75;margin-top:0.1rem;">#${person.uid}</span>` : '';
+    const handler = onClick || `handleNodeClick('${person.id}')`;
+    return `<div class="tree-node ${extraClass}"
+                 style="background:${bg};border-color:${bg};color:${tx};"
+                 onclick="${handler}">
+                <strong>${escapeHtml(person.name)}</strong>
+                ${uid}
+            </div>`;
+}
+
+// ==============================================================
 // DISAMBIGUATION MODAL
-// Shows when multiple people share the same search name
 // ==============================================================
 function showDisambiguationModal(matches, onSelect) {
-    const existing = document.getElementById('disambigModal');
-    if (existing) existing.remove();
-
+    document.getElementById('disambigModal')?.remove();
     const items = matches.map(p => `
         <div onclick="disambigSelect('${p.id}')"
              style="padding:0.6rem 0.8rem;border-radius:0.5rem;background:#fef7ed;
                     border:1px solid #e7cfb0;cursor:pointer;margin-bottom:0.4rem;">
             <strong>${escapeHtml(p.name)}</strong>
-            <span style="font-size:0.65rem;color:#b08052;margin-left:0.5rem;">#${p.uid || p.id}</span>
+            <span style="font-size:0.65rem;color:#b08052;margin-left:0.5rem;">#${p.uid||p.id}</span>
             ${p.dob ? `<span style="font-size:0.7rem;color:#888;margin-left:0.5rem;">b. ${p.dob}</span>` : ''}
-        </div>
-    `).join('');
-
-    const html = `
-        <div id="disambigModal" style="position:fixed;top:0;left:0;right:0;bottom:0;
-             background:rgba(0,0,0,0.5);display:flex;align-items:center;
-             justify-content:center;z-index:10000;">
+            ${p.family_name ? `<span style="font-size:0.7rem;color:#5a7abf;margin-left:0.5rem;">${escapeHtml(p.family_name)}</span>` : ''}
+        </div>`).join('');
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="disambigModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);
+             display:flex;align-items:center;justify-content:center;z-index:10000;">
             <div style="background:white;border-radius:1rem;padding:1.5rem;
                         max-width:400px;width:90%;max-height:80vh;overflow-y:auto;">
                 <h3 style="margin-bottom:0.75rem;">Multiple matches found</h3>
-                <p style="font-size:0.8rem;color:#666;margin-bottom:1rem;">
-                    Several people share this name. Please select the one you mean:
-                </p>
+                <p style="font-size:0.8rem;color:#666;margin-bottom:1rem;">Select the person you mean:</p>
                 ${items}
                 <button onclick="document.getElementById('disambigModal').remove()"
-                        style="margin-top:0.75rem;background:#6c757d;color:white;
-                               border:none;border-radius:0.5rem;padding:0.5rem 1rem;
-                               cursor:pointer;width:100%;">Cancel</button>
+                        style="margin-top:0.75rem;background:#6c757d;color:white;border:none;
+                               border-radius:0.5rem;padding:0.5rem 1rem;cursor:pointer;width:100%;">Cancel</button>
             </div>
-        </div>`;
-
-    document.body.insertAdjacentHTML('beforeend', html);
+        </div>`);
     window._disambigCallback = onSelect;
 }
-
-window.disambigSelect = function(personId) {
-    const modal = document.getElementById('disambigModal');
-    if (modal) modal.remove();
-    if (window._disambigCallback) window._disambigCallback(personId);
+window.disambigSelect = function(id) {
+    document.getElementById('disambigModal')?.remove();
+    window._disambigCallback?.(id);
 };
+
+// ==============================================================
+// LINEAGE MODAL  (shown when a node is clicked)
+// ==============================================================
+function buildLineageHtml(person) {
+    // ── ancestors ──
+    const ancestorsRaw = getAncestors(person);
+    const uniqAncestors = [];
+    const seenA = new Set();
+    for (const a of ancestorsRaw) { if (!seenA.has(a.id)) { seenA.add(a.id); uniqAncestors.push(a); } }
+
+    const aDepth = new Map();
+    function calcAncDepth(p, d) {
+        if (!p) return;
+        if (!aDepth.has(p.id) || aDepth.get(p.id) < d) aDepth.set(p.id, d);
+        for (const pid of getParentsArray(p)) calcAncDepth(findPersonById(pid), d+1);
+    }
+    calcAncDepth(person, 0);
+
+    const aGroups = new Map();
+    for (const a of uniqAncestors) {
+        const d = aDepth.get(a.id) ?? 0;
+        if (!aGroups.has(d)) aGroups.set(d, []);
+        aGroups.get(d).push(a);
+    }
+    const aDepths = Array.from(aGroups.keys()).sort((a,b) => b-a);
+
+    // ── descendants ──
+    const descRaw = getDescendants(person);
+    const uniqDesc = [];
+    const seenD = new Set([person.id]);
+    for (const d of descRaw) { if (!seenD.has(d.id)) { seenD.add(d.id); uniqDesc.push(d); } }
+
+    const dDepth = new Map();
+    function calcDescDepth(p, d) {
+        if (!p) return;
+        if (!dDepth.has(p.id) || dDepth.get(p.id) < d) dDepth.set(p.id, d);
+        for (const child of FAMILY_DB.people.filter(c => getParentsArray(c).includes(p.id))) calcDescDepth(child, d+1);
+    }
+    calcDescDepth(person, 0);
+
+    const dGroups = new Map();
+    for (const d of uniqDesc) {
+        const depth = dDepth.get(d.id) ?? 1;
+        if (!dGroups.has(depth)) dGroups.set(depth, []);
+        dGroups.get(depth).push(d);
+    }
+    const dDepths = Array.from(dGroups.keys()).sort((a,b) => a-b);
+
+    const totalAncGen = aDepths.length;
+    let html = `<div class="lineage-chain">`;
+
+    aDepths.forEach((depth, idx) => {
+        const level  = aGroups.get(depth);
+        const genNum = totalAncGen - idx;
+        const label  = depth === 0
+            ? `📍 ${escapeHtml(person.name)}`
+            : idx === 0 ? `👴👵 Oldest Ancestors — Gen ${genNum}` : `📍 Generation ${genNum}`;
+
+        html += `<div class="lineage-gen-block">
+                    <div class="lineage-gen-label">${label}</div>
+                    <div class="lineage-nodes-row">`;
+        for (const m of level) html += buildNodeHtml(m, m.id === person.id ? 'focused-node' : '');
+        html += `</div></div>`;
+        if (idx < aDepths.length - 1) html += `<div class="lineage-connector">▼</div>`;
+    });
+
+    if (dDepths.length) {
+        html += `<div class="lineage-connector">▼</div>`;
+        dDepths.forEach((depth, idx) => {
+            const label = depth === 1 ? '👶 Children' : depth === 2 ? '📍 Grandchildren' : depth === 3 ? '📍 Great-Grandchildren' : `📍 Generation +${depth}`;
+            html += `<div class="lineage-gen-block">
+                        <div class="lineage-gen-label">${label}</div>
+                        <div class="lineage-nodes-row">`;
+            for (const m of dGroups.get(depth)) html += buildNodeHtml(m);
+            html += `</div></div>`;
+            if (idx < dDepths.length - 1) html += `<div class="lineage-connector">▼</div>`;
+        });
+    }
+
+    html += `</div>`;
+    return html;
+}
+
+function showLineageModal(personId) {
+    const person = findPersonById(personId);
+    if (!person) return;
+    document.getElementById('lineageModal')?.remove();
+
+    const canEdit = canEditPerson(personId);
+    const editBtn = canEdit
+        ? `<button onclick="closeLineageModal();showEditModal(findPersonById('${personId}'))"
+                   style="background:#5a3e2b;color:white;border:none;border-radius:0.75rem;
+                          padding:0.5rem 1.2rem;cursor:pointer;font-size:0.85rem;">✏️ Edit</button>`
+        : `<span style="font-size:0.75rem;color:#999;">🔒 Editing restricted</span>`;
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="lineageModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
+             display:flex;align-items:center;justify-content:center;z-index:10000;padding:1rem;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:700px;
+                        width:100%;max-height:90vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h3 style="color:#4f321b;">📜 Lineage of ${escapeHtml(person.name)}</h3>
+                    <button onclick="closeLineageModal()"
+                            style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888;">✕</button>
+                </div>
+                <div id="lineageModalBody">
+                    ${buildLineageHtml(person)}
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;
+                            padding-top:1rem;border-top:1px solid #e2cfb0;">
+                    ${editBtn}
+                    <button onclick="closeLineageModal()"
+                            style="background:#6c757d;color:white;border:none;border-radius:0.75rem;
+                                   padding:0.5rem 1.2rem;cursor:pointer;font-size:0.85rem;">Close</button>
+                </div>
+            </div>
+        </div>`);
+}
+
+window.closeLineageModal = function() { document.getElementById('lineageModal')?.remove(); };
+window.handleNodeClick   = function(personId) { showLineageModal(personId); };
 
 // ==============================================================
 // EDIT MODAL
 // ==============================================================
 function showEditModal(person) {
-    const existing = document.getElementById('editModal');
-    if (existing) existing.remove();
+    if (!person) return;
+    document.getElementById('editModal')?.remove();
 
-    const html = `
-        <div id="editModal" style="position:fixed;top:0;left:0;right:0;bottom:0;
-             background:rgba(0,0,0,0.5);display:flex;align-items:center;
-             justify-content:center;z-index:10000;">
-            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:400px;width:90%;">
+    const rootToggle = isAdmin ? `
+        <div class="form-group">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+                <input type="checkbox" id="editIsRoot" ${isRootPerson(person) ? 'checked' : ''}
+                       style="width:auto;cursor:pointer;">
+                Mark as Root Ancestor
+            </label>
+        </div>` : '';
+
+    const fnOptions = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort()
+        .map(fn => `<option value="${fn}" ${person.family_name === fn ? 'selected' : ''}>${escapeHtml(fn)}</option>`).join('');
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="editModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);
+             display:flex;align-items:center;justify-content:center;z-index:11000;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:400px;
+                        width:90%;max-height:90vh;overflow-y:auto;">
                 <h3 style="margin-bottom:1rem;">✏️ Edit ${escapeHtml(person.name)}</h3>
                 <div class="form-group">
                     <label>Full Name</label>
@@ -472,357 +618,188 @@ function showEditModal(person) {
                 <div class="form-group">
                     <label>Gender</label>
                     <select id="editGender" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                        <option value="male"    ${person.gender === 'male'    ? 'selected' : ''}>Male</option>
-                        <option value="female"  ${person.gender === 'female'  ? 'selected' : ''}>Female</option>
-                        <option value="other"   ${person.gender === 'other'   ? 'selected' : ''}>Other</option>
-                        <option value="unknown" ${person.gender === 'unknown' ? 'selected' : ''}>Unknown</option>
+                        <option value="male"    ${person.gender==='male'    ?'selected':''}>Male</option>
+                        <option value="female"  ${person.gender==='female'  ?'selected':''}>Female</option>
+                        <option value="other"   ${person.gender==='other'   ?'selected':''}>Other</option>
+                        <option value="unknown" ${person.gender==='unknown' ?'selected':''}>Unknown</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label>Date of Birth</label>
-                    <input type="date" id="editDob" value="${person.dob || ''}"
+                    <input type="date" id="editDob" value="${person.dob||''}"
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
                 </div>
-                <div style="font-size:0.7rem;color:#888;margin-bottom:0.75rem;">
-                    Unique ID: <strong>#${person.uid || person.id}</strong>
+                <div class="form-group">
+                    <label>Family Name</label>
+                    <select id="editFamilyName" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                        <option value="">-- No family assigned --</option>
+                        ${fnOptions}
+                    </select>
                 </div>
+                ${rootToggle}
+                <div style="font-size:0.7rem;color:#888;margin-bottom:0.75rem;">ID: <strong>#${person.uid||person.id}</strong></div>
                 <div style="display:flex;gap:0.5rem;margin-top:1rem;">
-                    <button onclick="saveEdit('${person.id}')" class="submit-btn" style="flex:1;">Save Changes</button>
+                    <button onclick="saveEdit('${person.id}')" class="submit-btn" style="flex:1;">Save</button>
                     <button onclick="closeEditModal()"
-                            style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;">
-                        Cancel
-                    </button>
+                            style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;">Cancel</button>
                 </div>
             </div>
-        </div>`;
+        </div>`);
 
-    document.body.insertAdjacentHTML('beforeend', html);
-
-    const editDob = document.getElementById('editDob');
-    if (editDob) editDob.addEventListener('click', function() { this.showPicker(); });
+    document.getElementById('editDob')?.addEventListener('click', function() { this.showPicker(); });
 }
 
 window.saveEdit = async function(personId) {
-    const newName   = document.getElementById('editName').value.trim();
-    const newGender = document.getElementById('editGender').value;
-    const newDob    = document.getElementById('editDob').value;
+    const name       = document.getElementById('editName').value.trim();
+    const gender     = document.getElementById('editGender').value;
+    const dob        = document.getElementById('editDob').value;
+    const familyName = document.getElementById('editFamilyName').value.trim();
+    const isRoot     = document.getElementById('editIsRoot')?.checked ?? null;
 
-    if (!newName) { alert('Name cannot be empty'); return; }
-    const validation = validateFullName(newName);
-    if (!validation.valid) { alert(validation.message); return; }
+    if (!name) { alert('Name cannot be empty'); return; }
+    const v = validateFullName(name);
+    if (!v.valid) { alert(v.message); return; }
 
-    const updates = { name: newName, gender: newGender };
-    if (newDob) updates.dob = newDob;
+    if (familyName) await assignColorForFamily(familyName);
+
+    const updates = { name, gender };
+    if (dob) updates.dob = dob;
+    if (familyName !== undefined) updates.family_name = familyName || null;
+    if (isRoot !== null) updates.is_root = isRoot;
 
     try {
         await updatePersonInDB(personId, updates);
-        await loadPeople();
+        await loadPeople(); await loadFamilyColors();
         closeEditModal();
-        showSuccess('contributeSuccessMsg', 'Person updated successfully!');
-    } catch (error) {
-        showError('contributeErrorMsg', `Failed to update: ${error.message}`);
-    }
+        showSuccess('contributeSuccessMsg', 'Updated successfully!');
+    } catch(e) { showError('contributeErrorMsg', `Update failed: ${e.message}`); }
 };
 
-window.closeEditModal = function() {
-    const modal = document.getElementById('editModal');
-    if (modal) modal.remove();
-};
+window.closeEditModal = function() { document.getElementById('editModal')?.remove(); };
 
-window.handleNodeClick = async function(personId) {
-    const person = findPersonById(personId);
-    if (!person) return;
-    if (canEditPerson(personId)) {
-        showEditModal(person);
-    } else {
-        const owner = personOwners[personId] || 'another user';
-        alert(`🔒 You cannot edit "${person.name}" because this record was added by ${owner}.`);
-    }
-};
-
-// ==============================================================
-// NODE HTML BUILDER (shared across views)
-// ==============================================================
-function buildNodeHtml(person, extraClass = '') {
-    const canEdit = canEditPerson(person.id);
-    const editIcon = canEdit ? ' ✏️' : ' 🔒';
-    const uidBadge = person.uid ? `<span class="uid-badge">#${person.uid}</span>` : '';
-    return `<div class="tree-node ${extraClass}"
-                 onclick="handleNodeClick('${person.id}')">
-                <strong>${escapeHtml(person.name)}</strong>${editIcon}
-                ${uidBadge}
-            </div>`;
-}
+// Expose for lineage modal's edit button
+window.findPersonById = findPersonById;
+window.showEditModal  = showEditModal;
 
 // ==============================================================
 // ╔══════════════════════════════════════════════╗
-// ║  VIEW 1: LINEAGE (ancestors + descendants)  ║
+// ║  VIEW 1: LINEAGE TAB                         ║
 // ╚══════════════════════════════════════════════╝
 // ==============================================================
 function renderLineageView(personId) {
     const container = document.getElementById('lineageContainer');
     const titleEl   = document.getElementById('lineageTitle');
-
-    const person = findPersonById(personId);
-    if (!person) {
-        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
-            🍂 Person not found. Try searching again.</div>`;
-        return;
-    }
-
-    // ── Collect ancestors (upward) ──
-    const ancestorsRaw = getAncestors(person);
-    const uniqueAncestors = [];
-    const seenA = new Set();
-    for (const a of ancestorsRaw) {
-        if (!seenA.has(a.id)) { seenA.add(a.id); uniqueAncestors.push(a); }
-    }
-
-    // ── Collect descendants (downward, excluding person themselves) ──
-    const descendantsRaw = getDescendants(person);
-    const uniqueDescendants = [];
-    const seenD = new Set();
-    seenD.add(person.id); // exclude self from desc list
-    for (const d of descendantsRaw) {
-        if (!seenD.has(d.id)) { seenD.add(d.id); uniqueDescendants.push(d); }
-    }
-
-    // ── Build ancestor generations (oldest first) ──
-    // Depth relative to the searched person (person = depth 0)
-    const depthMap = new Map();
-    function computeAncestorDepth(p, depth) {
-        if (!p) return;
-        if (!depthMap.has(p.id) || depthMap.get(p.id) < depth) depthMap.set(p.id, depth);
-        for (const pid of getParentsArray(p)) {
-            const par = findPersonById(pid);
-            if (par) computeAncestorDepth(par, depth + 1);
-        }
-    }
-    computeAncestorDepth(person, 0);
-
-    const ancestorGroupMap = new Map();
-    for (const a of uniqueAncestors) {
-        const d = depthMap.get(a.id) ?? 0;
-        if (!ancestorGroupMap.has(d)) ancestorGroupMap.set(d, []);
-        ancestorGroupMap.get(d).push(a);
-    }
-    // Sort depths descending so oldest generation renders first
-    const ancestorDepths = Array.from(ancestorGroupMap.keys()).sort((a, b) => b - a);
-
-    // ── Build descendant generations ──
-    const descDepthMap = new Map();
-    function computeDescDepth(p, depth) {
-        if (!p) return;
-        if (!descDepthMap.has(p.id) || descDepthMap.get(p.id) < depth) descDepthMap.set(p.id, depth);
-        const children = FAMILY_DB.people.filter(c => getParentsArray(c).includes(p.id));
-        for (const child of children) computeDescDepth(child, depth + 1);
-    }
-    computeDescDepth(person, 0);
-
-    const descGroupMap = new Map();
-    for (const d of uniqueDescendants) {
-        const depth = descDepthMap.get(d.id) ?? 1;
-        if (!descGroupMap.has(depth)) descGroupMap.set(depth, []);
-        descGroupMap.get(depth).push(d);
-    }
-    const descDepths = Array.from(descGroupMap.keys()).sort((a, b) => a - b);
-
-    // ── Render ──
+    const person    = findPersonById(personId);
+    if (!person) { container.innerHTML = `<div style="text-align:center;padding:1.5rem;">🍂 Person not found.</div>`; return; }
     titleEl.innerHTML = `📜 Full Lineage of ${escapeHtml(person.name)}`;
-
-    let html = `<div class="lineage-chain">`;
-
-    // Ancestor rows (oldest → person)
-    const totalAncestorGens = ancestorDepths.length;
-    ancestorDepths.forEach((depth, idx) => {
-        const level = ancestorGroupMap.get(depth);
-        const genNum = totalAncestorGens - idx;
-        const label = depth === 0
-            ? `📍 ${escapeHtml(person.name)} (You)`
-            : (idx === 0 ? `👴👵 Oldest Ancestors — Generation ${genNum}` : `📍 Generation ${genNum}`);
-
-        html += `<div class="lineage-gen-block">
-                    <div class="lineage-gen-label">${label}</div>
-                    <div class="lineage-nodes-row">`;
-        for (const member of level) {
-            html += buildNodeHtml(member, member.id === person.id ? 'focused-node' : '');
-        }
-        html += `</div></div>`;
-
-        if (idx < ancestorDepths.length - 1) {
-            html += `<div class="lineage-connector">▼</div>`;
-        }
-    });
-
-    // Descendant rows (children → grandchildren → …)
-    if (descDepths.length > 0) {
-        html += `<div class="lineage-connector">▼</div>`;
-        descDepths.forEach((depth, idx) => {
-            const level = descGroupMap.get(depth);
-            const label = depth === 1
-                ? `👶 Children`
-                : `📍 Generation +${depth} (${depth === 2 ? 'Grandchildren' : depth === 3 ? 'Great-Grandchildren' : `Descendants`})`;
-
-            html += `<div class="lineage-gen-block">
-                        <div class="lineage-gen-label">${label}</div>
-                        <div class="lineage-nodes-row">`;
-            for (const member of level) {
-                html += buildNodeHtml(member);
-            }
-            html += `</div></div>`;
-
-            if (idx < descDepths.length - 1) {
-                html += `<div class="lineage-connector">▼</div>`;
-            }
-        });
-    }
-
-    html += `</div>`;
-    container.innerHTML = html;
+    renderLegend('lineageLegend');
+    container.innerHTML = buildLineageHtml(person);
 }
 
-// ── Lineage search handler ──
 function handleLineageSearch(searchTerm) {
-    const container  = document.getElementById('lineageContainer');
-    const statusEl   = document.getElementById('lineageStatus');
-
+    const container = document.getElementById('lineageContainer');
+    const statusEl  = document.getElementById('lineageStatus');
     if (!searchTerm.trim()) {
-        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
-            🌱 Enter a name to see their full lineage.</div>`;
+        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">🌱 Enter a name to see their full lineage.</div>`;
         return;
     }
-
     const matches = findAllByPartialName(searchTerm);
-    if (matches.length === 0) {
-        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
-            🍂 No records found for "${escapeHtml(searchTerm)}"<br><br>
-            💡 Try contributing your family using the "Add Your Details" tab!</div>`;
-        statusEl.textContent = '';
-        return;
+    if (!matches.length) {
+        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">🍂 No records found for "${escapeHtml(searchTerm)}"</div>`;
+        statusEl.textContent = ''; return;
     }
-
     if (matches.length === 1) {
-        statusEl.textContent = `🔍 Showing lineage for "${matches[0].name}"`;
+        statusEl.textContent = `Showing lineage for "${matches[0].name}"`;
         renderLineageView(matches[0].id);
     } else {
-        // Multiple people with similar names — show disambiguation
-        statusEl.textContent = `Multiple matches found for "${searchTerm}"`;
-        showDisambiguationModal(matches, (chosenId) => {
-            const chosen = findPersonById(chosenId);
-            if (chosen) {
-                statusEl.textContent = `🔍 Showing lineage for "${chosen.name}" [#${chosen.uid || chosen.id}]`;
-                renderLineageView(chosenId);
-            }
+        statusEl.textContent = `Multiple matches for "${searchTerm}"`;
+        showDisambiguationModal(matches, id => {
+            const p = findPersonById(id);
+            if (p) { statusEl.textContent = `Showing lineage for "${p.name}"${p.uid ? ` [#${p.uid}]` : ''}`; renderLineageView(id); }
         });
     }
 }
 
 // ==============================================================
 // ╔══════════════════════════════════════════════════════════╗
-// ║  VIEW 2: WHOLE FAMILY TREE (div-based, relationship-    ║
-// ║  aware — siblings on same row, parents above children)  ║
+// ║  VIEW 2: WHOLE FAMILY TREE                              ║
 // ╚══════════════════════════════════════════════════════════╝
 // ==============================================================
-
-/**
- * Given a cluster of people, returns an ordered array of generation rows
- * where each row is grouped by shared parentage so that siblings always
- * appear together, and the ordering of rows reflects actual parent→child
- * relationships rather than just depth buckets.
- *
- * Returns: Array of rows, each row = Array of people (same generation level)
- * Rows are ordered oldest-first (roots at index 0).
- */
 function buildWholeTreeRows(cluster) {
-    // Assign each person a depth based on their longest ancestor chain
-    // within this cluster only.
     const clusterIds = new Set(cluster.map(p => p.id));
-
     const depthCache = new Map();
+
+    // A person is treated as a root (depth 0) if they have no parents
+    // within this cluster — regardless of the is_root flag.
+    // is_root is used by the admin for explicit promotion only;
+    // the tree renderer simply uses parent-child relationships.
     function depth(person) {
         if (depthCache.has(person.id)) return depthCache.get(person.id);
         const clusterParents = getParentsArray(person).filter(pid => clusterIds.has(pid));
         if (!clusterParents.length) {
-            depthCache.set(person.id, 0);
-            return 0;
+            depthCache.set(person.id, 0); return 0;
         }
-        const maxParentDepth = Math.max(
-            ...clusterParents.map(pid => {
-                const par = findPersonById(pid);
-                return par ? depth(par) : 0;
-            })
-        );
-        const d = maxParentDepth + 1;
-        depthCache.set(person.id, d);
-        return d;
+        const parentDepths = clusterParents
+            .map(pid => { const par = findPersonById(pid); return par ? depth(par) : 0; });
+        const d = Math.max(...parentDepths) + 1;
+        depthCache.set(person.id, d); return d;
     }
 
     cluster.forEach(p => depth(p));
 
-    // Group by depth
     const byDepth = new Map();
     cluster.forEach(p => {
-        const d = depthCache.get(p.id);
+        const d = depthCache.get(p.id) ?? 0;
         if (!byDepth.has(d)) byDepth.set(d, []);
         byDepth.get(d).push(p);
     });
 
-    const maxDepth = Math.max(...Array.from(byDepth.keys()));
+    if (!byDepth.size) return [];
+    const maxDepth = Math.max(...byDepth.keys());
     const rows = [];
-
     for (let d = 0; d <= maxDepth; d++) {
         const row = byDepth.get(d) || [];
-
-        // Sort within each row: group siblings together (same parent set),
-        // then sort alphabetically within each sibling group.
         row.sort((a, b) => {
-            const keyA = getParentsArray(a).slice().sort().join(',');
-            const keyB = getParentsArray(b).slice().sort().join(',');
-            if (keyA !== keyB) return keyA.localeCompare(keyB);
-            return a.name.localeCompare(b.name);
+            const ka = getParentsArray(a).sort().join(',');
+            const kb = getParentsArray(b).sort().join(',');
+            return ka !== kb ? ka.localeCompare(kb) : a.name.localeCompare(b.name);
         });
-
         rows.push(row);
     }
-
     return rows;
 }
 
 function renderWholeFamilyTree() {
     const container = document.getElementById('wholeTreeContainer');
     const titleEl   = document.getElementById('wholeTreeTitle');
+    const clusters  = findFamilyClusters();
 
-    const clusters = findFamilyClusters();
     if (!clusters.length || clusters.every(c => !c.length)) {
-        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
-            🌱 Not enough data. Add more family members first.</div>`;
+        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">🌱 No data yet. Add family members to get started.</div>`;
         return;
     }
 
-    titleEl.innerHTML = `🌳 Whole Family Tree`;
+    titleEl.innerHTML = '🌳 Whole Family Tree';
+    renderLegend('wholeTreeLegend');
 
-    // Render a single cluster as a div-based flowchart
     function renderClusterHtml(cluster) {
         const rows = buildWholeTreeRows(cluster);
-        let html = `<div class="generations-tree">`;
+        if (!rows.length) return `<div style="text-align:center;padding:1rem;font-size:0.82rem;color:#888;">No members to display in this group yet.</div>`;
 
+        let html = `<div class="generations-tree">`;
         rows.forEach((row, idx) => {
             if (!row.length) return;
             const genNum   = idx + 1;
-            const genLabel = genNum === 1 ? '👴👵 Oldest Generation' : `📍 Generation ${genNum}`;
+            const genLabel = idx === 0 ? '👴👵 Oldest Generation' : `📍 Generation ${genNum}`;
+            const rowIds   = row.map(m => m.id).join(',');
 
-            html += `<div class="gen-label">${genLabel}</div>`;
-            html += `<div class="generation">`;
-            for (const member of row) {
-                html += buildNodeHtml(member);
-            }
+            html += `<div class="gen-label">${genLabel}</div><div class="generation">`;
+            for (const m of row) html += buildNodeHtml(m);
+            html += `<div class="tree-node add-gen-btn"
+                          onclick="showWholeTreeAddModal(${genNum},'${rowIds}',${idx},${idx===0})">＋ Add</div>`;
             html += `</div>`;
-
-            if (idx < rows.length - 1) {
-                html += `<div class="connector-line">▼</div>`;
-            }
+            if (idx < rows.length - 1) html += `<div class="connector-line">▼</div>`;
         });
-
         html += `</div>`;
         return html;
     }
@@ -830,472 +807,353 @@ function renderWholeFamilyTree() {
     if (clusters.length === 1) {
         container.innerHTML = renderClusterHtml(clusters[0]);
     } else {
-        let fullHtml = `<div style="display:flex;flex-direction:column;gap:1rem;">`;
+        let html = `<div style="display:flex;flex-direction:column;gap:1rem;">`;
         clusters.forEach(cluster => {
-            const familyName = clusterFamilyName(cluster);
-            fullHtml += `
-                <div class="family-separator">
-                    <h3 class="family-heading">🏠 ${escapeHtml(familyName)} (${cluster.length} members)</h3>
-                    ${renderClusterHtml(cluster)}
-                </div>`;
+            const fn = clusterFamilyName(cluster);
+            html += `<div class="family-separator">
+                        <h3 class="family-heading">🏠 ${escapeHtml(fn)} (${cluster.length} members)</h3>
+                        ${renderClusterHtml(cluster)}
+                     </div>`;
         });
-        fullHtml += `</div>`;
-        container.innerHTML = fullHtml;
-    }
-}
-
-// ==============================================================
-// ╔══════════════════════════════════════════════════════════╗
-// ║  VIEW 3: GENERATIONS (flat rows + ＋ Add button)        ║
-// ╚══════════════════════════════════════════════════════════╝
-// ==============================================================
-function getFamilyTreeForCluster(cluster) {
-    const savedDB  = FAMILY_DB;
-    FAMILY_DB = { people: cluster };
-
-    const roots = cluster.filter(p => {
-        const parents = getParentsArray(p);
-        return !parents || parents.length === 0;
-    });
-
-    let allMembers = new Set();
-    for (const root of roots) {
-        getDescendants(root).forEach(d => allMembers.add(d));
-    }
-    if (!allMembers.size) cluster.forEach(p => allMembers.add(p));
-
-    const members = Array.from(allMembers);
-    const depths  = new Map();
-    let maxDepth  = 0;
-
-    for (const p of members) {
-        const d = getGenerationDepth(p);
-        depths.set(p.id, d);
-        maxDepth = Math.max(maxDepth, d);
-    }
-
-    const groups = new Map();
-    for (const p of members) {
-        const d = depths.get(p.id) || 0;
-        if (!groups.has(d)) groups.set(d, []);
-        groups.get(d).push(p);
-    }
-
-    const result = [];
-    for (let i = 0; i <= maxDepth; i++) {
-        if (groups.has(i)) result.push(groups.get(i));
-    }
-
-    FAMILY_DB = savedDB;
-    return {
-        generations: result,
-        familyName:  clusterFamilyName(cluster),
-        memberCount: members.length,
-        depths
-    };
-}
-
-function renderGenerationsView() {
-    const container = document.getElementById('generationsContainer');
-    const titleEl   = document.getElementById('generationsTitle');
-
-    const clusters = findFamilyClusters();
-    if (!clusters.length || clusters.every(c => !c.length)) {
-        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
-            🌱 Not enough data. Add more family members first.</div>`;
-        return;
-    }
-
-    titleEl.innerHTML = `📊 Generations View (${clusters.length} family group${clusters.length > 1 ? 's' : ''})`;
-
-    function renderCluster(cluster) {
-        const family = getFamilyTreeForCluster(cluster);
-        let html = `<div class="generations-tree">`;
-
-        family.generations.forEach((level, idx) => {
-            if (!level.length) return;
-            const genNum = idx + 1;
-            const genLabel = genNum === 1 ? '👴👵 Oldest Generation' : `📍 Generation ${genNum}`;
-
-            html += `<div class="gen-label">${genLabel}</div>`;
-            html += `<div class="generation" data-gen="${genNum}" data-depth="${idx}">`;
-            for (const member of level) {
-                html += buildNodeHtml(member);
-            }
-            // ＋ Add button
-            const siblingIds = level.map(m => m.id).join(',');
-            html += `<div class="tree-node add-gen-btn"
-                          onclick="showAddAtGenerationModal(${genNum}, '${siblingIds}', ${idx})">＋ Add</div>`;
-            html += `</div>`;
-
-            if (idx < family.generations.length - 1) {
-                html += `<div class="connector-line">▼</div>`;
-            }
-        });
-
         html += `</div>`;
-        return { html, familyName: family.familyName, memberCount: family.memberCount };
-    }
-
-    if (clusters.length === 1) {
-        const { html } = renderCluster(clusters[0]);
         container.innerHTML = html;
-    } else {
-        let fullHtml = `<div style="display:flex;flex-direction:column;gap:1rem;">`;
-        clusters.forEach(cluster => {
-            const { html, familyName, memberCount } = renderCluster(cluster);
-            fullHtml += `
-                <div class="family-separator">
-                    <h3 class="family-heading">🏠 ${escapeHtml(familyName)} (${memberCount} members)</h3>
-                    ${html}
-                </div>`;
-        });
-        fullHtml += `</div>`;
-        container.innerHTML = fullHtml;
     }
 }
 
 // ==============================================================
-// ADD AT GENERATION MODAL (used by Generations view)
+// WHOLE TREE ＋ ADD MODAL
 // ==============================================================
-window.showAddAtGenerationModal = function(generationNumber, siblingIdsStr, depthIdx) {
-    const existing = document.getElementById('addAtGenModal');
-    if (existing) existing.remove();
+window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
+    document.getElementById('wholeTreeAddModal')?.remove();
+    const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
 
-    const html = `
-        <div id="addAtGenModal" style="position:fixed;top:0;left:0;right:0;bottom:0;
-             background:rgba(0,0,0,0.55);display:flex;align-items:center;
-             justify-content:center;z-index:10000;">
-            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:380px;width:90%;">
-                <h3 style="margin-bottom:0.25rem;">➕ Add to Generation ${generationNumber}</h3>
-                <p style="font-size:0.8rem;color:#888;margin-bottom:1rem;">
-                    This person will be placed in Generation ${generationNumber}.
-                </p>
+    const rowOpts = rowIds.map(id => {
+        const p = findPersonById(id);
+        return p ? `<option value="${id}">${escapeHtml(p.name)}${p.uid?` [#${p.uid}]`:''}</option>` : '';
+    }).join('');
+
+    const allOpts = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name))
+        .map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.uid?` [#${p.uid}]`:''}</option>`).join('');
+
+    const existingFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
+    const fnOpts = existingFamilies.map(fn => `<option value="${fn}">${escapeHtml(fn)}</option>`).join('');
+
+    const aboveNote = isOldest ? `<div style="font-size:0.72rem;color:#856404;background:#fff3cd;padding:0.4rem;border-radius:0.4rem;margin-top:0.3rem;">
+        ⚠️ No generation above. New person will be marked as <strong>root ancestor</strong> automatically.</div>` : '';
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="wholeTreeAddModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
+             display:flex;align-items:center;justify-content:center;z-index:10000;padding:1rem;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:460px;
+                        width:100%;max-height:90vh;overflow-y:auto;">
+                <h3 style="margin-bottom:0.25rem;">➕ Add Member — Generation ${genNum}</h3>
+                <p style="font-size:0.8rem;color:#888;margin-bottom:1rem;">Choose placement relative to Generation ${genNum}.</p>
                 <div class="form-group">
+                    <label>Placement *</label>
+                    <select id="wtPlacement" onchange="wtPlacementChanged(${genNum},${depthIdx},${isOldest})"
+                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                        <option value="">-- Choose placement --</option>
+                        <option value="above">⬆️ Above — new person is a parent of someone in Gen ${genNum}</option>
+                        <option value="within">↔️ Within — new person is a sibling at Gen ${genNum}</option>
+                        <option value="below">⬇️ Below — new person is a child of someone in Gen ${genNum}</option>
+                    </select>
+                </div>
+                <div id="wtContextSection"></div>
+                <div class="form-group" style="margin-top:0.75rem;">
                     <label>Full Name *</label>
-                    <input type="text" id="addAtGenName" placeholder="First Last"
+                    <input type="text" id="wtName" placeholder="First Last"
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
                 </div>
-                <div class="form-group" style="margin-top:0.75rem;">
-                    <label>Date of Birth <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
-                    <input type="date" id="addAtGenDob"
-                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;cursor:pointer;">
+                <div class="form-group">
+                    <label>Gender</label>
+                    <select id="wtGender" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                        <option value="unknown">Unknown</option><option value="male">Male</option>
+                        <option value="female">Female</option><option value="other">Other</option>
+                    </select>
                 </div>
-                <div id="addAtGenError" style="color:#c33;font-size:0.82rem;margin-top:0.5rem;display:none;"></div>
+                <div class="form-group">
+                    <label>Date of Birth <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <input type="date" id="wtDob" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
+                </div>
+                <div class="form-group">
+                    <label>Family Name <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <select id="wtFamilyNameSelect" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
+                        <option value="">-- Select existing family --</option>${fnOpts}
+                    </select>
+                    <input type="text" id="wtFamilyNameInput" placeholder="Or type a new family name"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.2rem;">Select from dropdown OR type a new name below it.</div>
+                </div>
+                <div id="wtError" style="color:#c33;font-size:0.82rem;margin-top:0.5rem;display:none;"></div>
                 <div style="display:flex;gap:0.5rem;margin-top:1rem;">
-                    <button onclick="submitAddAtGeneration(${generationNumber}, '${siblingIdsStr}', ${depthIdx})"
+                    <button onclick="submitWholeTreeAdd('${rowIdsStr}',${depthIdx},${isOldest})"
                             class="submit-btn" style="flex:1;">Add to Tree</button>
-                    <button onclick="closeAddAtGenModal()"
-                            style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;padding:0.5rem;">
-                        Cancel
-                    </button>
+                    <button onclick="closeWholeTreeAddModal()"
+                            style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;padding:0.5rem;">Cancel</button>
                 </div>
             </div>
-        </div>`;
+        </div>`);
 
-    document.body.insertAdjacentHTML('beforeend', html);
-    const dobInput = document.getElementById('addAtGenDob');
-    if (dobInput) dobInput.addEventListener('click', function() { this.showPicker(); });
+    window._wtRowIds = rowIds;
+    window._wtAllOpts = allOpts;
+    window._wtRowOpts = rowOpts;
+    window._wtAboveNote = aboveNote;
+
+    document.getElementById('wtDob')?.addEventListener('click', function() { this.showPicker(); });
 };
 
-window.closeAddAtGenModal = function() {
-    const modal = document.getElementById('addAtGenModal');
-    if (modal) modal.remove();
+window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
+    const placement = document.getElementById('wtPlacement').value;
+    const section   = document.getElementById('wtContextSection');
+    const rowOpts   = window._wtRowOpts || '';
+    const allOpts   = window._wtAllOpts || '';
+    const aboveNote = window._wtAboveNote || '';
+    if (!placement) { section.innerHTML = ''; return; }
+    if (placement === 'above') {
+        section.innerHTML = `${aboveNote}
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label>Their child in Generation ${genNum} *</label>
+                <select id="wtChildLink" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                    <option value="">-- Select child --</option>${rowOpts}
+                </select>
+            </div>`;
+    } else if (placement === 'within') {
+        section.innerHTML = `
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label>Inherit parents from sibling <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                <select id="wtSiblingRef" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
+                    <option value="">-- Auto-inherit from first sibling with parents --</option>${rowOpts}
+                </select>
+                <select id="wtParent1" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
+                    <option value="">-- Specify Parent 1 (optional) --</option>${allOpts}
+                </select>
+                <select id="wtParent2" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                    <option value="">-- Specify Parent 2 (optional) --</option>${allOpts}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Child(ren) <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                <select id="wtChildLink2" multiple style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;min-height:80px;">
+                    ${allOpts}
+                </select>
+                <div style="font-size:0.68rem;color:#888;margin-top:0.2rem;">Hold Ctrl/Cmd to select multiple</div>
+            </div>`;
+    } else if (placement === 'below') {
+        section.innerHTML = `
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label>Parent(s) from Generation ${genNum} *</label>
+                <select id="wtParentLink1" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
+                    <option value="">-- Select Parent 1 --</option>${rowOpts}
+                </select>
+                <select id="wtParentLink2" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                    <option value="">-- Select Parent 2 (optional) --</option>${rowOpts}
+                </select>
+            </div>`;
+    }
 };
 
-window.submitAddAtGeneration = async function(generationNumber, siblingIdsStr, depthIdx) {
-    const name = document.getElementById('addAtGenName').value.trim();
-    const dob  = document.getElementById('addAtGenDob').value;
-    const errorDiv = document.getElementById('addAtGenError');
+window.closeWholeTreeAddModal = function() { document.getElementById('wholeTreeAddModal')?.remove(); };
 
-    const showModalError = (msg) => {
-        errorDiv.textContent = '❌ ' + msg;
-        errorDiv.style.display = 'block';
-        setTimeout(() => { errorDiv.style.display = 'none'; }, 5000);
-    };
+window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
+    const name      = document.getElementById('wtName').value.trim();
+    const gender    = document.getElementById('wtGender').value;
+    const dob       = document.getElementById('wtDob').value;
+    const placement = document.getElementById('wtPlacement').value;
+    const fnSelect  = document.getElementById('wtFamilyNameSelect').value.trim();
+    const fnInput   = document.getElementById('wtFamilyNameInput').value.trim();
+    const familyName = fnSelect || fnInput || null;
+    const errorDiv  = document.getElementById('wtError');
 
-    const nameValidation = validateFullName(name);
-    if (!nameValidation.valid) return showModalError(nameValidation.message);
+    const showErr = msg => { errorDiv.textContent = '❌ ' + msg; errorDiv.style.display = 'block'; setTimeout(() => { errorDiv.style.display = 'none'; }, 6000); };
 
-    const siblingIds = siblingIdsStr ? siblingIdsStr.split(',').filter(Boolean) : [];
-    const uid  = generateUID();
-    const newId = makePersonId(name, uid);
+    if (!placement) return showErr('Please choose a placement.');
+    const nv = validateFullName(name); if (!nv.valid) return showErr(nv.message);
+    if (familyName) await assignColorForFamily(familyName);
+
+    const uid = generateUID(), newId = makePersonId(name, uid);
 
     try {
-        if (depthIdx === 0) {
-            let familyGroup = null;
-            for (const sibId of siblingIds) {
-                const sib = findPersonById(sibId);
-                if (sib && sib.family_group) { familyGroup = sib.family_group; break; }
-            }
-            if (!familyGroup && siblingIds.length > 0) {
-                familyGroup = `fg_${siblingIds[0]}`;
-                for (const sibId of siblingIds) {
-                    const sib = findPersonById(sibId);
-                    if (sib && !sib.family_group) await updatePersonInDB(sibId, { family_group: familyGroup });
-                }
-            }
-
-            const newPerson = { id: newId, uid, name, gender: 'unknown', dob: dob || null, parents: JSON.stringify([]), family_group: familyGroup };
-            await addPersonToDB(newPerson);
+        if (placement === 'above') {
+            const childLinkId = document.getElementById('wtChildLink')?.value || '';
+            if (!childLinkId) return showErr('Please select which member will be their child.');
+            await addPersonToDB({ id:newId, uid, name, gender, dob:dob||null, parents:JSON.stringify([]), is_root:isOldest, family_name:familyName });
             await loadPeople();
-
-            // Wire up co-parent link if a shared child exists
-            let anchorChild = null;
-            for (const sibId of siblingIds) {
-                anchorChild = FAMILY_DB.people.find(p => getParentsArray(p).includes(sibId));
-                if (anchorChild) break;
+            const child = findPersonById(childLinkId);
+            if (child) {
+                const updated = [...new Set([...getParentsArray(child), newId])];
+                await updatePersonInDB(childLinkId, { parents: JSON.stringify(updated) });
+                if (isRootPerson(child)) await updatePersonInDB(childLinkId, { is_root: false });
             }
-            if (anchorChild) {
-                const childParents = getParentsArray(anchorChild);
-                const updatedParents = [...new Set([...childParents, newId])];
-                await updatePersonInDB(anchorChild.id, { parents: JSON.stringify(updatedParents) });
-                await loadPeople();
+        } else if (placement === 'within') {
+            const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
+            const p1 = document.getElementById('wtParent1')?.value || '';
+            const p2 = document.getElementById('wtParent2')?.value || '';
+            const childLinks = Array.from(document.getElementById('wtChildLink2')?.selectedOptions||[]).map(o=>o.value);
+            let parentIds = [];
+            if (p1) parentIds.push(p1);
+            if (p2 && p2 !== p1) parentIds.push(p2);
+            if (!parentIds.length && siblingRefId) {
+                const sib = findPersonById(siblingRefId);
+                if (sib) parentIds = getParentsArray(sib);
             }
-
-        } else {
-            let inheritedParentIds = [];
-            for (const sibId of siblingIds) {
-                const sibling = findPersonById(sibId);
-                if (sibling) {
-                    const sibParents = getParentsArray(sibling);
-                    if (sibParents.length) { inheritedParentIds = sibParents; break; }
-                }
+            if (!parentIds.length) {
+                const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
+                for (const sid of rowIds) { const s = findPersonById(sid); if (s) { const sp = getParentsArray(s); if (sp.length) { parentIds = sp; break; } } }
             }
-            const newPerson = { id: newId, uid, name, gender: 'unknown', dob: dob || null, parents: JSON.stringify(inheritedParentIds) };
-            await addPersonToDB(newPerson);
+            await addPersonToDB({ id:newId, uid, name, gender, dob:dob||null, parents:JSON.stringify(parentIds), is_root:parentIds.length===0&&depthIdx===0, family_name:familyName });
+            await loadPeople();
+            for (const cid of childLinks) {
+                const child = findPersonById(cid);
+                if (child) await updatePersonInDB(cid, { parents: JSON.stringify([...new Set([...getParentsArray(child), newId])]) });
+            }
+        } else if (placement === 'below') {
+            const pl1 = document.getElementById('wtParentLink1')?.value || '';
+            const pl2 = document.getElementById('wtParentLink2')?.value || '';
+            if (!pl1) return showErr('Please select at least one parent.');
+            const parentIds = [pl1]; if (pl2 && pl2 !== pl1) parentIds.push(pl2);
+            await addPersonToDB({ id:newId, uid, name, gender, dob:dob||null, parents:JSON.stringify(parentIds), is_root:false, family_name:familyName });
             await loadPeople();
         }
 
-        personOwners[newId] = currentUser;
-        savePersonOwners();
-
-        closeAddAtGenModal();
-        showSuccess('contributeSuccessMsg', `✅ "${name}" added to Generation ${generationNumber}!`);
-        renderGenerationsView(); // refresh generations view
-
+        await loadPeople();
+        personOwners[newId] = currentUser; savePersonOwners();
+        closeWholeTreeAddModal();
+        showSuccess('contributeSuccessMsg', `✅ "${name}" added to the tree!`);
+        renderWholeFamilyTree();
         if (isAdmin) await updateAdminPanel();
-
-    } catch (err) {
-        showModalError(`Failed to add: ${err.message}`);
-    }
+    } catch(err) { showErr(`Failed: ${err.message}`); }
 };
 
 // ==============================================================
-// CONTRIBUTE (Add to Tree)
+// CONTRIBUTE
 // ==============================================================
-async function addOrGetPerson(nameOrRef, gender = 'unknown') {
-    // nameOrRef can be { id, name } or just a string
+async function addOrGetPerson(nameOrRef, gender = 'unknown', familyName = null) {
     if (!nameOrRef) return null;
-
     const isRef = typeof nameOrRef === 'object';
     const name  = isRef ? nameOrRef.name : nameOrRef;
     const existingId = isRef ? nameOrRef.id : null;
+    if (existingId) return findPersonById(existingId);
 
-    if (existingId) {
-        // Selected from dropdown — already in DB
-        return findPersonById(existingId);
-    }
+    const v = validateFullName(name);
+    if (!v.valid) { showError('contributeErrorMsg', v.message); return null; }
 
-    const validation = validateFullName(name);
-    if (!validation.valid) { showError('contributeErrorMsg', validation.message); return null; }
-
-    // Check for exact name match — if exists, return it (don't force duplicate)
     const exactMatches = findPeopleByName(name);
     if (exactMatches.length === 1) return exactMatches[0];
 
-    // Multiple matches OR no match — create new with uid
-    const uid   = generateUID();
-    const newId = makePersonId(name, uid);
-    const newPerson = { id: newId, uid, name, gender, parents: JSON.stringify([]) };
-
+    const uid = generateUID(), newId = makePersonId(name, uid);
+    if (familyName) await assignColorForFamily(familyName);
     try {
-        await addPersonToDB(newPerson);
+        await addPersonToDB({ id:newId, uid, name, gender, parents:JSON.stringify([]), is_root:false, family_name:familyName });
         await loadPeople();
         return findPersonById(newId);
-    } catch (error) {
-        console.error('Failed to add person:', error);
-        return null;
-    }
+    } catch(e) { console.error('addOrGetPerson failed:', e); return null; }
 }
 
 async function contributeToTree(event) {
     event.preventDefault();
-
     const userName   = document.getElementById('userFullName').value.trim();
     const userGender = document.getElementById('userGender').value;
     const userDob    = document.getElementById('userDob')?.value || null;
-
-    const fatherRef  = getParentValue('father'); // { id, name } or null
+    const fatherRef  = getParentValue('father');
     const motherRef  = getParentValue('mother');
+    const familyName = getFamilyNameValue() || null;
 
-    const userValidation = validateFullName(userName);
-    if (!userValidation.valid) {
-        showError('contributeErrorMsg', `Your name: ${userValidation.message}`);
-        return;
-    }
+    const uv = validateFullName(userName);
+    if (!uv.valid) { showError('contributeErrorMsg', `Your name: ${uv.message}`); return; }
 
-    if (!isAdmin && (!fatherRef || !motherRef)) {
-        showError('contributeErrorMsg', '⚠️ Both father and mother names are required.');
+    if (!familyName) {
+        showError('contributeErrorMsg', '⚠️ Family name is required. Please select an existing family or type a new one.');
         return;
     }
 
     if (fatherRef && motherRef) {
-        const genVal = await validateParentsGeneration(fatherRef, motherRef);
-        if (!genVal.valid) { showError('contributeErrorMsg', genVal.message); return; }
+        const gv = await validateParentsGeneration(fatherRef, motherRef);
+        if (!gv.valid) { showError('contributeErrorMsg', gv.message); return; }
     }
 
-    showSuccess('contributeSuccessMsg', 'Adding your information to the family tree...');
+    showSuccess('contributeSuccessMsg', 'Adding to the family tree…');
 
     try {
         let parentIds = [];
-
         if (fatherRef) {
-            const fVal = validateFullName(fatherRef.name);
-            if (!fVal.valid) { showError('contributeErrorMsg', `Father's name: ${fVal.message}`); return; }
-            const father = await addOrGetPerson(fatherRef, 'male');
+            const fv = validateFullName(fatherRef.name);
+            if (!fv.valid) { showError('contributeErrorMsg', `Father: ${fv.message}`); return; }
+            const father = await addOrGetPerson(fatherRef, 'male', familyName);
             if (father) parentIds.push(father.id);
         }
-
         if (motherRef) {
-            const mVal = validateFullName(motherRef.name);
-            if (!mVal.valid) { showError('contributeErrorMsg', `Mother's name: ${mVal.message}`); return; }
-            const mother = await addOrGetPerson(motherRef, 'female');
+            const mv = validateFullName(motherRef.name);
+            if (!mv.valid) { showError('contributeErrorMsg', `Mother: ${mv.message}`); return; }
+            const mother = await addOrGetPerson(motherRef, 'female', familyName);
             if (mother) parentIds.push(mother.id);
         }
 
-        // Always create a new person with a unique uid — same names are allowed
-        const uid   = generateUID();
-        const newId = makePersonId(userName, uid);
+        if (familyName) await assignColorForFamily(familyName);
 
-        const newUser = {
-            id:     newId,
-            uid,
-            name:   userName,
-            gender: userGender,
-            dob:    userDob,
-            parents: JSON.stringify(parentIds)
-        };
-
-        await addPersonToDB(newUser);
+        const uid = generateUID(), newId = makePersonId(userName, uid);
+        const autoRoot = parentIds.length === 0;
+        await addPersonToDB({ id:newId, uid, name:userName, gender:userGender, dob:userDob,
+                              parents:JSON.stringify(parentIds), is_root:autoRoot, family_name:familyName });
         await loadPeople();
+        personOwners[newId] = currentUser; savePersonOwners();
 
-        personOwners[newId] = currentUser;
-        savePersonOwners();
+        let msg = `Added "${userName}" [#${uid}]`;
+        if (fatherRef) msg += ` · Father: ${fatherRef.name}`;
+        if (motherRef) msg += ` · Mother: ${motherRef.name}`;
+        if (familyName) msg += ` · Family: ${familyName}`;
 
-        let message = `Successfully added "${userName}" [#${uid}] to the family tree!`;
-        if (fatherRef) message += ` 👨 Father: ${fatherRef.name}`;
-        if (motherRef) message += ` 👩 Mother: ${motherRef.name}`;
-        if (userDob)   message += ` 📅 Born: ${userDob}`;
-
-        // Reset form
         document.getElementById('contributeForm').reset();
-        ['fatherName','motherName'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-        ['fatherSelect','motherSelect'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
+        ['fatherName','motherName'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+        ['fatherSelect','motherSelect'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
         if (fatherMode === 'select') toggleParentMode('father');
         if (motherMode === 'select') toggleParentMode('mother');
+        // Reset family name field
+        const fnInp = document.getElementById('familyNameInput');
+        const fnSel = document.getElementById('familyNameSelect');
+        if (fnInp) fnInp.value = '';
+        if (fnSel) fnSel.value = '';
 
-        showSuccess('contributeSuccessMsg', message);
+        showSuccess('contributeSuccessMsg', msg);
         if (isAdmin) await updateAdminPanel();
-
-    } catch (error) {
-        showError('contributeErrorMsg', `Failed to add: ${error.message}. Please check your internet connection.`);
-    }
+    } catch(e) { showError('contributeErrorMsg', `Failed: ${e.message}`); }
 }
 
 // ==============================================================
 // EXPORT
 // ==============================================================
 function exportToSpreadsheet() {
-    if (!FAMILY_DB.people.length) {
-        showError('contributeErrorMsg', 'No data to export.');
-        return;
-    }
-
+    if (!FAMILY_DB.people.length) { showError('contributeErrorMsg', 'No data to export.'); return; }
     const clusters = findFamilyClusters();
 
-    function getFatherName(person) {
-        for (const pid of getParentsArray(person)) {
-            const p = findPersonById(pid);
-            if (p && p.gender === 'male') return p.name;
-        }
-        return '';
-    }
+    const getFather = p => { for (const pid of getParentsArray(p)) { const x = findPersonById(pid); if (x?.gender==='male') return x.name; } return ''; };
+    const getMother = p => { for (const pid of getParentsArray(p)) { const x = findPersonById(pid); if (x?.gender==='female') return x.name; } return ''; };
+    const getChildren = p => FAMILY_DB.people.filter(x => getParentsArray(x).includes(p.id)).map(x=>x.name).sort().join('; ');
 
-    function getMotherName(person) {
-        for (const pid of getParentsArray(person)) {
-            const p = findPersonById(pid);
-            if (p && p.gender === 'female') return p.name;
-        }
-        return '';
-    }
-
-    function getChildrenNames(person) {
-        return FAMILY_DB.people
-            .filter(p => getParentsArray(p).includes(person.id))
-            .map(p => p.name)
-            .sort()
-            .join('; ');
-    }
-
-    let csvRows = [];
-    csvRows.push('# ANCESTRAL THREADS - FAMILY TREE EXPORT');
-    csvRows.push(`# Generated: ${new Date().toLocaleString()}`);
-    csvRows.push(`# Total Families: ${clusters.length}`);
-    csvRows.push(`# Total Members: ${FAMILY_DB.people.length}`);
-    csvRows.push('');
+    let rows = ['# ANCESTRAL THREADS - FAMILY TREE EXPORT', `# Generated: ${new Date().toLocaleString()}`, `# Total Families: ${clusters.length}`, `# Total Members: ${FAMILY_DB.people.length}`, ''];
 
     clusters.forEach((cluster, ci) => {
-        const letter     = String.fromCharCode(65 + ci);
-        const familyName = clusterFamilyName(cluster);
+        const letter = String.fromCharCode(65+ci), fn = clusterFamilyName(cluster);
+        rows.push(`"=== FAMILY ${letter}: ${fn} (${cluster.length} members) ==="`);
+        rows.push('"Generation","Full Name","Unique ID","Family Name","Root?","Gender","Date of Birth","Father","Mother","Children"');
 
-        csvRows.push(`"=== FAMILY ${letter}: ${familyName} (${cluster.length} members) ==="`);
-        csvRows.push('"Generation","Full Name","Unique ID","Gender","Date of Birth","Father","Mother","Children"');
-
-        const sortedMembers = [...cluster].sort((a, b) => {
-            const ga = getPersonGenerationLevel(a);
-            const gb = getPersonGenerationLevel(b);
-            if (ga !== gb) return ga - gb;
-            return a.name.localeCompare(b.name);
-        });
-
+        const sorted = [...cluster].sort((a,b) => { const d = getPersonGenerationLevel(a)-getPersonGenerationLevel(b); return d||a.name.localeCompare(b.name); });
         let lastGen = null;
-        sortedMembers.forEach(person => {
-            const gen     = getPersonGenerationLevel(person) + 1;
-            const gender  = person.gender ? person.gender.charAt(0).toUpperCase() + person.gender.slice(1) : 'Unknown';
-            const uid     = person.uid || person.id;
-            const dob     = person.dob || '';
-            const father  = getFatherName(person);
-            const mother  = getMotherName(person);
-            const children = getChildrenNames(person);
-
-            if (lastGen !== null && gen !== lastGen) csvRows.push('');
+        sorted.forEach(person => {
+            const gen = getPersonGenerationLevel(person)+1;
+            if (lastGen !== null && gen !== lastGen) rows.push('');
             lastGen = gen;
-
-            csvRows.push(`"Gen ${gen}","${person.name}","#${uid}","${gender}","${dob}","${father}","${mother}","${children}"`);
+            rows.push(`"Gen ${gen}","${person.name}","#${person.uid||person.id}","${person.family_name||''}","${isRootPerson(person)?'Yes':'No'}","${person.gender||''}","${person.dob||''}","${getFather(person)}","${getMother(person)}","${getChildren(person)}"`);
         });
-
-        csvRows.push('');
-        csvRows.push('');
+        rows.push('','');
     });
 
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', `family_tree_export_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    link.setAttribute('download', `family_tree_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
-
-    showSuccess('contributeSuccessMsg', `Exported ${FAMILY_DB.people.length} members across ${clusters.length} families!`);
+    showSuccess('contributeSuccessMsg', `Exported ${FAMILY_DB.people.length} members!`);
 }
 
 // ==============================================================
@@ -1304,43 +1162,46 @@ function exportToSpreadsheet() {
 async function updateAdminPanel() {
     if (!isAdmin) return;
     await loadPeople();
-
     document.getElementById('totalPeopleCount').textContent = FAMILY_DB.people.length;
-
     let maxDepth = 0;
-    FAMILY_DB.people.forEach(person => {
-        const d = getPersonGenerationLevel(person);
-        maxDepth = Math.max(maxDepth, d);
-    });
-    document.getElementById('totalGenerations').textContent   = maxDepth + 1;
-    document.getElementById('totalContributors').textContent  = FAMILY_DB.people.length;
+    FAMILY_DB.people.forEach(p => { maxDepth = Math.max(maxDepth, getPersonGenerationLevel(p)); });
+    document.getElementById('totalGenerations').textContent  = maxDepth + 1;
+    document.getElementById('totalContributors').textContent = FAMILY_DB.people.length;
 
-    const namesGrid = document.getElementById('namesGrid');
-    namesGrid.innerHTML = FAMILY_DB.people.map(person => `
-        <div class="name-item">
+    document.getElementById('namesGrid').innerHTML = FAMILY_DB.people.map(person => {
+        const bg = getColorForFamily(person.family_name);
+        const tx = getTextColor(bg);
+        return `<div class="name-item">
             <div>
                 <strong>${escapeHtml(person.name)}</strong>
-                <span style="font-size:0.65rem;color:#b08052;margin-left:0.3rem;">#${person.uid || ''}</span>
-                <br>
-                <small>ID: ${person.id} | DOB: ${person.dob || 'Not set'} | Owner: ${personOwners[person.id] || 'Unknown'}</small>
+                <span style="font-size:0.65rem;color:#b08052;margin-left:0.3rem;">#${person.uid||''}</span>
+                ${person.family_name ? `<span style="background:${bg};color:${tx};font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:0.5rem;margin-left:0.3rem;">${escapeHtml(person.family_name)}</span>` : ''}
+                ${isRootPerson(person) ? '<span style="font-size:0.6rem;color:#856404;margin-left:0.3rem;">👑 root</span>' : ''}
+                <br><small>DOB: ${person.dob||'Not set'} · Owner: ${personOwners[person.id]||'Unknown'}</small>
             </div>
-            <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
-        </div>
-    `).join('');
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                <button class="delete-btn" style="background:#5a7abf;" onclick="toggleRootHandler('${person.id}')">
+                    ${isRootPerson(person)?'👑 Unset Root':'👑 Set Root'}
+                </button>
+                <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
+            </div>
+        </div>`;
+    }).join('');
 }
 
+window.toggleRootHandler = async function(personId) {
+    if (!isAdmin) { alert('Admins only.'); return; }
+    const p = findPersonById(personId); if (!p) return;
+    try { await updatePersonInDB(personId, { is_root: !isRootPerson(p) }); await updateAdminPanel(); }
+    catch(e) { alert(`Failed: ${e.message}`); }
+};
+
 window.deletePersonHandler = async function(personId) {
-    if (!isAdmin) { alert('Only administrators can delete records.'); return; }
-    const person = findPersonById(personId);
-    if (!person) return;
-    if (confirm(`Are you sure you want to delete "${person.name}" [#${person.uid || ''}]? This will remove them from all family relationships.`)) {
-        try {
-            await deletePersonFromDB(personId);
-            await updateAdminPanel();
-            alert(`"${person.name}" deleted successfully!`);
-        } catch (error) {
-            alert(`Failed to delete: ${error.message}`);
-        }
+    if (!isAdmin) { alert('Admins only.'); return; }
+    const p = findPersonById(personId); if (!p) return;
+    if (confirm(`Delete "${p.name}" [#${p.uid||''}]? This removes them from all relationships.`)) {
+        try { await deletePersonFromDB(personId); await updateAdminPanel(); alert('Deleted.'); }
+        catch(e) { alert(`Failed: ${e.message}`); }
     }
 };
 
@@ -1350,9 +1211,7 @@ window.deletePersonHandler = async function(personId) {
 function checkAuth() {
     currentUser = sessionStorage.getItem('currentUser');
     isAdmin     = sessionStorage.getItem('isAdmin') === 'true';
-
     if (!currentUser) { window.location.href = 'login.html'; return false; }
-
     document.getElementById('usernameDisplay').textContent = currentUser;
     if (isAdmin) {
         document.getElementById('adminBadge').style.display  = 'inline-block';
@@ -1360,27 +1219,14 @@ function checkAuth() {
     }
     return true;
 }
-
-function logout() {
-    sessionStorage.clear();
-    window.location.href = 'login.html';
-}
+function logout() { sessionStorage.clear(); window.location.href = 'login.html'; }
 
 // ==============================================================
-// DATE PICKER SETUP
-// ==============================================================
-function setupDatePickers() {
-    const dobInput = document.getElementById('userDob');
-    if (dobInput) dobInput.addEventListener('click', function() { this.showPicker(); });
-}
-
-// ==============================================================
-// EVENT LISTENERS
+// EVENT LISTENERS & INIT
 // ==============================================================
 function setupEventListeners() {
     document.getElementById('logoutBtn').addEventListener('click', logout);
 
-    // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const tabName = btn.dataset.tab;
@@ -1388,56 +1234,43 @@ function setupEventListeners() {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(`${tabName}Tab`).classList.add('active');
+            // Auto-render whole tree when tab is clicked
+            if (tabName === 'wholetree') renderWholeFamilyTree();
         });
     });
 
-    // Contribute form
     document.getElementById('contributeForm').addEventListener('submit', contributeToTree);
 
-    // ── Lineage tab ──
-    document.getElementById('searchLineageForm').addEventListener('submit', (e) => {
+    document.getElementById('userDob')?.addEventListener('click', function() { this.showPicker(); });
+
+    document.getElementById('searchLineageForm').addEventListener('submit', e => {
         e.preventDefault();
         handleLineageSearch(document.getElementById('searchLineageName').value);
     });
-    document.getElementById('exportLineageBtn').addEventListener('click', exportToSpreadsheet);
 
-    // ── Whole tree tab ──
-    document.getElementById('renderWholeTreeBtn').addEventListener('click', renderWholeFamilyTree);
-    document.getElementById('exportWholeTreeBtn').addEventListener('click', exportToSpreadsheet);
-
-    // ── Generations tab ──
-    document.getElementById('renderGenerationsBtn').addEventListener('click', renderGenerationsView);
-    document.getElementById('exportGenerationsBtn').addEventListener('click', exportToSpreadsheet);
+    document.getElementById('exportLineageBtn')?.addEventListener('click', exportToSpreadsheet);
+    document.getElementById('exportWholeTreeBtn')?.addEventListener('click', exportToSpreadsheet);
 }
 
-// ==============================================================
-// INIT
-// ==============================================================
 async function init() {
     if (!checkAuth()) return;
-
     try {
+        await loadFamilyColors();
         await loadPeople();
-        setupDatePickers();
         if (isAdmin) await updateAdminPanel();
-
-        console.log('✅ App initialized with', FAMILY_DB.people.length, 'people');
-    } catch (error) {
-        console.error('Init error:', error);
-        const containers = ['lineageContainer', 'wholeTreeContainer', 'generationsContainer'];
-        containers.forEach(id => {
+        console.log('✅ App initialized —', FAMILY_DB.people.length, 'people,', Object.keys(FAMILY_COLORS).length, 'family colors');
+    } catch(e) {
+        console.error('Init error:', e);
+        ['lineageContainer','wholeTreeContainer'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = `
-                <div style="text-align:center;padding:1.5rem;color:#c33;font-size:0.85rem;">
-                    ❌ Failed to load data: ${error.message}<br><br>
-                    <button onclick="location.reload()" class="submit-btn retry-btn">🔄 Retry</button>
-                </div>`;
+            if (el) el.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#c33;font-size:0.85rem;">
+                ❌ Failed to load: ${e.message}<br><br>
+                <button onclick="location.reload()" class="submit-btn" style="margin-top:0.5rem;">🔄 Retry</button>
+            </div>`;
         });
     }
 }
 
-// Expose toggleParentMode globally (called via inline onclick in HTML)
 window.toggleParentMode = toggleParentMode;
-
 setupEventListeners();
 init();
