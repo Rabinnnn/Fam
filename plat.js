@@ -155,14 +155,15 @@ async function loadFamilyColors() {
 function renderLegend(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    const families = Object.keys(FAMILY_COLORS);
-    if (!families.length) { el.innerHTML = ''; return; }
+    // Only show families that are actually assigned to at least one current member
+    const activeFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
+    if (!activeFamilies.length) { el.innerHTML = ''; return; }
     el.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.75rem;
                     padding:0.6rem 0.8rem;background:#fcf8ef;border-radius:0.75rem;border:1px solid #e2cfb0;">
             <span style="font-size:0.75rem;font-weight:700;color:#5a3e2b;margin-right:0.25rem;">Legend:</span>
-            ${families.map(fn => {
-                const bg = FAMILY_COLORS[fn];
+            ${activeFamilies.map(fn => {
+                const bg = FAMILY_COLORS[fn] || '#e8dcc8';
                 const tx = getTextColor(bg);
                 return `<span style="background:${bg};color:${tx};padding:0.2rem 0.6rem;
                                border-radius:1rem;font-size:0.72rem;font-weight:600;">
@@ -434,24 +435,12 @@ async function validateParentsGeneration(fatherRef, motherRef) {
 function findFamilyClusters() {
     const adj = new Map();
     FAMILY_DB.people.forEach(p => adj.set(p.id, new Set()));
+    // Clusters are built from parent-child relationships ONLY.
+    // family_name is a visual attribute (color) and must not influence
+    // which people get grouped into the same tree cluster.
     FAMILY_DB.people.forEach(p => {
         for (const pid of getParentsArray(p)) {
             if (adj.has(pid)) { adj.get(pid).add(p.id); adj.get(p.id).add(pid); }
-        }
-    });
-    // Link by shared family_name
-    const fnMap = new Map();
-    FAMILY_DB.people.forEach(p => {
-        if (p.family_name) {
-            if (!fnMap.has(p.family_name)) fnMap.set(p.family_name, []);
-            fnMap.get(p.family_name).push(p.id);
-        }
-    });
-    fnMap.forEach(ids => {
-        for (let i = 0; i < ids.length - 1; i++) {
-            if (adj.has(ids[i]) && adj.has(ids[i+1])) {
-                adj.get(ids[i]).add(ids[i+1]); adj.get(ids[i+1]).add(ids[i]);
-            }
         }
     });
     const visited = new Set(), clusters = [];
