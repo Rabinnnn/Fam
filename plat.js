@@ -176,14 +176,23 @@ function renderLegend(containerId) {
 // FAMILY NAME FIELD HELPERS
 // ==============================================================
 function populateFamilyNameDropdown() {
-    const sel = document.getElementById('familyNameSelect');
-    if (!sel) return;
     const existing = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
-    sel.innerHTML = '<option value="">-- Select existing family --</option>';
-    existing.forEach(fn => {
-        const opt = document.createElement('option');
-        opt.value = fn; opt.textContent = fn;
-        sel.appendChild(opt);
+    const selectors = [
+        'familyNameSelect',
+        'fatherFamilyNameSelect',
+        'motherFamilyNameSelect'
+    ];
+    selectors.forEach(selId => {
+        const sel = document.getElementById(selId);
+        if (!sel) return;
+        const current = sel.value; // preserve current selection
+        sel.innerHTML = '<option value="">-- Select existing family --</option>';
+        existing.forEach(fn => {
+            const opt = document.createElement('option');
+            opt.value = fn; opt.textContent = fn;
+            sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
     });
 }
 
@@ -211,6 +220,31 @@ window.toggleFamilyNameMode = function() {
         btn.textContent = '📋 Choose Existing'; mode.value = 'new';
     }
 };
+
+// Toggle between dropdown and text input for a parent's family name field
+window.toggleParentFamilyMode = function(parent) {
+    const sel  = document.getElementById(`${parent}FamilyNameSelect`);
+    const inp  = document.getElementById(`${parent}FamilyNameInput`);
+    const mode = document.getElementById(`${parent}FamilyNameMode`);
+    const btn  = inp?.parentElement?.querySelector('.toggle-mode-btn');
+    if (!sel || !inp || !mode) return;
+    if (mode.value === 'new') {
+        sel.style.display = 'block'; inp.style.display = 'none'; inp.value = '';
+        if (btn) btn.textContent = '✏️';
+        mode.value = 'existing';
+    } else {
+        sel.style.display = 'none'; inp.style.display = 'block'; sel.value = '';
+        if (btn) btn.textContent = '📋';
+        mode.value = 'new';
+    }
+};
+
+// Read a parent's family name value from whichever mode is active
+function getParentFamilyName(parent) {
+    const mode = document.getElementById(`${parent}FamilyNameMode`)?.value || 'new';
+    if (mode === 'existing') return document.getElementById(`${parent}FamilyNameSelect`)?.value.trim() || '';
+    return document.getElementById(`${parent}FamilyNameInput`)?.value.trim() || '';
+}
 
 // ==============================================================
 // PARENT DROPDOWN HELPERS
@@ -1197,9 +1231,11 @@ async function contributeToTree(event) {
     const userName   = document.getElementById('userFullName').value.trim();
     const userGender = document.getElementById('userGender').value;
     const userDob    = document.getElementById('userDob')?.value || null;
-    const fatherRef  = getParentValue('father');
-    const motherRef  = getParentValue('mother');
-    const familyName = getFamilyNameValue() || null;
+    const fatherRef        = getParentValue('father');
+    const motherRef        = getParentValue('mother');
+    const familyName       = getFamilyNameValue() || null;
+    const fatherFamilyName = getParentFamilyName('father') || familyName;
+    const motherFamilyName = getParentFamilyName('mother') || familyName;
 
     const uv = validateFullName(userName);
     if (!uv.valid) { showError('contributeErrorMsg', `Your name: ${uv.message}`); return; }
@@ -1224,11 +1260,11 @@ async function contributeToTree(event) {
         // addOrGetPerson now returns a local object immediately after the DB write.
         let parentIds = [];
         if (fatherRef) {
-            const father = await addOrGetPerson(fatherRef, 'male', familyName);
+            const father = await addOrGetPerson(fatherRef, 'male', fatherFamilyName);
             if (father) parentIds.push(father.id);
         }
         if (motherRef) {
-            const mother = await addOrGetPerson(motherRef, 'female', familyName);
+            const mother = await addOrGetPerson(motherRef, 'female', motherFamilyName);
             if (mother) parentIds.push(mother.id);
         }
 
@@ -1260,6 +1296,16 @@ async function contributeToTree(event) {
         const fnSel = document.getElementById('familyNameSelect');
         if (fnInp) fnInp.value = '';
         if (fnSel) fnSel.value = '';
+        // Reset parent family name fields
+        ['father','mother'].forEach(p => {
+            const pi = document.getElementById(`${p}FamilyNameInput`);
+            const ps = document.getElementById(`${p}FamilyNameSelect`);
+            const pm = document.getElementById(`${p}FamilyNameMode`);
+            if (pi) pi.value = '';
+            if (ps) ps.value = '';
+            // Return to manual (text) mode
+            if (pm && pm.value === 'existing') toggleParentFamilyMode(p);
+        });
 
         showSuccess('contributeSuccessMsg', msg);
         if (isAdmin) await updateAdminPanel();

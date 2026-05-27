@@ -198,73 +198,111 @@
 
             <form id="contributeForm">
 
+                <!-- ── ROW: Your name + Your family name (equal halves) ── -->
                 <div class="form-group">
-                    <label>Your Full Name *</label>
-                    <input type="text" id="userFullName" required placeholder="First Name Last Name">
-                    <div class="info-note">⚠️ Must include both first and last name</div>
-                </div>
-
-                <div class="form-group">
-                    <label>Your Gender</label>
-                    <select id="userGender">
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>📅 Date of Birth <span style="font-weight:400;color:#888;">(optional)</span></label>
-                    <input type="date" id="userDob" style="cursor:pointer;">
-                </div>
-
-                <!-- ── FAMILY NAME ── -->
-                <div class="form-group">
-                    <label>🏠 Family Name *</label>
-                    <div class="family-name-wrap">
-                        <input type="hidden" id="familyNameMode" value="new">
-                        <select id="familyNameSelect" style="display:none;">
-                            <option value="">-- Select existing family --</option>
-                        </select>
-                        <input type="text" id="familyNameInput" placeholder="Type your family name (e.g. Smith)">
-                        <button type="button" id="familyNameToggleBtn" class="toggle-mode-btn"
-                                onclick="toggleFamilyNameMode()">📋 Choose Existing</button>
-                    </div>
-                    <div class="info-note">⚠️ Required. Choose an existing family or type a new one. Members of the same family share a color on the tree.</div>
-                </div>
-
-                <!-- ── FATHER ── -->
-                <div class="form-group">
-                    <label>Father's Full Name</label>
-                    <div id="fatherContainer">
-                        <div class="parent-selector">
-                            <select id="fatherSelect" style="display:none;">
-                                <option value="">-- Select Father from existing records --</option>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:140px;">
+                            <label>Your Full Name *</label>
+                            <input type="text" id="userFullName" required placeholder="First Last" style="width:100%;">
+                            <div class="info-note">⚠️ First and last name required</div>
+                        </div>
+                        <div style="flex:1;min-width:140px;">
+                            <label>🏠 Your Family Name *</label>
+                            <input type="hidden" id="familyNameMode" value="new">
+                            <select id="familyNameSelect" style="display:none;width:100%;">
+                                <option value="">-- Select existing family --</option>
                             </select>
-                            <input type="text" id="fatherName" placeholder="First Name Last Name">
+                            <input type="text" id="familyNameInput" placeholder="e.g. Smith" style="width:100%;">
+                            <button type="button" id="familyNameToggleBtn" class="toggle-mode-btn"
+                                    style="margin-top:0.3rem;width:100%;"
+                                    onclick="toggleFamilyNameMode()">📋 Choose Existing</button>
+                            <div class="info-note">⚠️ Required</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── ROW: Gender + DOB (equal halves) ── -->
+                <div class="form-group">
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:120px;">
+                            <label>Gender</label>
+                            <select id="userGender" style="width:100%;">
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:120px;">
+                            <label>📅 Date of Birth <span style="font-weight:400;color:#888;">(optional)</span></label>
+                            <input type="date" id="userDob" style="cursor:pointer;width:100%;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── FATHER: name + family name (equal halves) ── -->
+                <div class="form-group">
+                    <label>Father's Details</label>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <!-- Father name col -->
+                        <div style="flex:1;min-width:140px;">
+                            <div id="fatherContainer">
+                                <select id="fatherSelect" style="display:none;width:100%;">
+                                    <option value="">-- Select Father --</option>
+                                </select>
+                                <input type="text" id="fatherName" placeholder="First Last" style="width:100%;">
+                            </div>
                             <button type="button" class="toggle-mode-btn"
+                                    style="margin-top:0.3rem;width:100%;"
                                     onclick="toggleParentMode('father')">📋 Use Existing</button>
+                            <div class="mode-indicator" id="fatherModeIndicator">✏️ Manual entry</div>
+                        </div>
+                        <!-- Father family name col -->
+                        <div style="flex:1;min-width:140px;">
+                            <input type="hidden" id="fatherFamilyNameMode" value="new">
+                            <select id="fatherFamilyNameSelect" style="display:none;width:100%;">
+                                <option value="">-- Select family --</option>
+                            </select>
+                            <input type="text" id="fatherFamilyNameInput" placeholder="Father's family" style="width:100%;">
+                            <button type="button" class="toggle-mode-btn"
+                                    style="margin-top:0.3rem;width:100%;"
+                                    onclick="toggleParentFamilyMode('father')">📋 Choose Existing</button>
+                            <div class="mode-indicator">Father's family name</div>
                         </div>
                     </div>
-                    <div class="mode-indicator" id="fatherModeIndicator">✏️ Manual entry mode</div>
-                    <div class="info-note">Include both first and last name if known</div>
+                    <div class="info-note" style="margin-top:0.4rem;">Include both first and last name · specify father's family separately</div>
                 </div>
 
-                <!-- ── MOTHER ── -->
+                <!-- ── MOTHER: name + family name (equal halves) ── -->
                 <div class="form-group">
-                    <label>Mother's Full Name</label>
-                    <div id="motherContainer">
-                        <div class="parent-selector">
-                            <select id="motherSelect" style="display:none;">
-                                <option value="">-- Select Mother from existing records --</option>
-                            </select>
-                            <input type="text" id="motherName" placeholder="First Name Last Name">
+                    <label>Mother's Details</label>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <!-- Mother name col -->
+                        <div style="flex:1;min-width:140px;">
+                            <div id="motherContainer">
+                                <select id="motherSelect" style="display:none;width:100%;">
+                                    <option value="">-- Select Mother --</option>
+                                </select>
+                                <input type="text" id="motherName" placeholder="First Last" style="width:100%;">
+                            </div>
                             <button type="button" class="toggle-mode-btn"
+                                    style="margin-top:0.3rem;width:100%;"
                                     onclick="toggleParentMode('mother')">📋 Use Existing</button>
+                            <div class="mode-indicator" id="motherModeIndicator">✏️ Manual entry</div>
+                        </div>
+                        <!-- Mother family name col -->
+                        <div style="flex:1;min-width:140px;">
+                            <input type="hidden" id="motherFamilyNameMode" value="new">
+                            <select id="motherFamilyNameSelect" style="display:none;width:100%;">
+                                <option value="">-- Select family --</option>
+                            </select>
+                            <input type="text" id="motherFamilyNameInput" placeholder="Mother's family" style="width:100%;">
+                            <button type="button" class="toggle-mode-btn"
+                                    style="margin-top:0.3rem;width:100%;"
+                                    onclick="toggleParentFamilyMode('mother')">📋 Choose Existing</button>
+                            <div class="mode-indicator">Mother's family name</div>
                         </div>
                     </div>
-                    <div class="mode-indicator" id="motherModeIndicator">✏️ Manual entry mode</div>
-                    <div class="info-note">Include both first and last name if known</div>
+                    <div class="info-note" style="margin-top:0.4rem;">Include both first and last name · specify mother's family separately</div>
                 </div>
 
                 <button type="submit" class="submit-btn">🌳 Add to Family Tree</button>
