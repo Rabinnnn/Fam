@@ -662,14 +662,7 @@ function showEditModal(person) {
     if (!person) return;
     document.getElementById('editModal')?.remove();
 
-    const rootToggle = isAdmin ? `
-        <div class="form-group">
-            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
-                <input type="checkbox" id="editIsRoot" ${isRootPerson(person) ? 'checked' : ''}
-                       style="width:auto;cursor:pointer;">
-                Mark as Root Ancestor
-            </label>
-        </div>` : '';
+    const rootToggle = '';
 
     const fnOptions = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort()
         .map(fn => `<option value="${fn}" ${person.family_name === fn ? 'selected' : ''}>${escapeHtml(fn)}</option>`).join('');
@@ -724,8 +717,6 @@ window.saveEdit = async function(personId) {
     const gender     = document.getElementById('editGender').value;
     const dob        = document.getElementById('editDob').value;
     const familyName = document.getElementById('editFamilyName').value.trim();
-    const isRoot     = document.getElementById('editIsRoot')?.checked ?? null;
-
     if (!name) { alert('Name cannot be empty'); return; }
     const v = validateFullName(name);
     if (!v.valid) { alert(v.message); return; }
@@ -735,7 +726,6 @@ window.saveEdit = async function(personId) {
     const updates = { name, gender };
     if (dob) updates.dob = dob;
     if (familyName !== undefined) updates.family_name = familyName || null;
-    if (isRoot !== null) updates.is_root = isRoot;
 
     try {
         await updatePersonInDB(personId, updates);
@@ -1379,9 +1369,6 @@ async function updateAdminPanel() {
                 <br><small>DOB: ${person.dob||'Not set'} · Owner: ${personOwners[person.id]||'Unknown'}</small>
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-                <button class="delete-btn" style="background:#5a7abf;" onclick="toggleRootHandler('${person.id}')">
-                    ${isRootPerson(person)?'👑 Unset Root':'👑 Set Root'}
-                </button>
                 <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
             </div>
         </div>`;
