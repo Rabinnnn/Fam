@@ -979,6 +979,16 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     window._wtAboveNote = aboveNote;
     window._wtAllPeople = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name));
 
+    // Pre-compute people who sit exactly one generation below this row (depthIdx + 1).
+    // We do this by finding all people whose parents include at least one member of the
+    // current row, OR whose parent-chain depth equals depthIdx + 1 in the same cluster.
+    // Simplest reliable approach: anyone who has a parent in the current row.
+    const nextGenPeople = FAMILY_DB.people.filter(p => {
+        const parents = getParentsArray(p);
+        return parents.some(pid => rowIds.includes(pid));
+    }).sort((a,b) => a.name.localeCompare(b.name));
+    window._wtNextGenPeople = nextGenPeople;
+
     document.getElementById('wtDob')?.addEventListener('click', function() { this.showPicker(); });
 };
 
@@ -1027,9 +1037,15 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
                 <div id="wtChildLink2Wrap"
                      style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
                             max-height:160px;overflow-y:auto;background:white;">
-                    ${(window._wtAllPeople||[]).map(p => buildCheckboxRow(p, 'wt-child-link2')).join('')}
+                    ${(window._wtNextGenPeople||[]).length
+                        ? (window._wtNextGenPeople||[]).map(p => buildCheckboxRow(p, 'wt-child-link2')).join('')
+                        : '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members in the generation below yet.</div>'
+                    }
                 </div>
-                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">Tick the members who will be children of the new person.</div>
+                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                    Only members of the generation directly below are shown.
+                    Tick those who will be children of the new person.
+                </div>
             </div>`;
     } else if (placement === 'below') {
         section.innerHTML = `
