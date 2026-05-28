@@ -161,7 +161,7 @@ function renderLegend(containerId) {
     el.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.75rem;
                     padding:0.6rem 0.8rem;background:#fcf8ef;border-radius:0.75rem;border:1px solid #e2cfb0;">
-            <span style="font-size:0.75rem;font-weight:700;color:#5a3e2b;margin-right:0.25rem;">Legend:</span>
+            <span style="font-size:0.75rem;font-weight:700;color:#5a3e2b;margin-right:0.25rem;">Families Legend:</span>
             ${activeFamilies.map(fn => {
                 const bg = FAMILY_COLORS[fn] || '#e8dcc8';
                 const tx = getTextColor(bg);
@@ -1357,23 +1357,138 @@ async function updateAdminPanel() {
     document.getElementById('totalGenerations').textContent  = maxDepth + 1;
     document.getElementById('totalContributors').textContent = FAMILY_DB.people.length;
 
+    // ── Bulk toolbar ──
+    const toolbar = document.getElementById('adminBulkToolbar');
+    if (toolbar) {
+        toolbar.innerHTML = `
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;
+                        padding:0.6rem 0.8rem;background:#fef7ed;border-radius:0.75rem;
+                        border:1px solid #e2cfb0;margin-bottom:0.75rem;">
+                <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.82rem;font-weight:600;color:#5a3e2b;">
+                    <input type="checkbox" id="selectAllCheckbox" style="width:auto;cursor:pointer;accent-color:#c2894b;"
+                           onchange="toggleSelectAll(this.checked)">
+                    Select all
+                </label>
+                <button onclick="deleteSelectedHandler()"
+                        style="background:#dc3545;color:white;border:none;border-radius:0.5rem;
+                               padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">
+                    🗑️ Delete selected
+                </button>
+                <button onclick="deleteAllHandler()"
+                        style="background:#7a1a2a;color:white;border:none;border-radius:0.5rem;
+                               padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">
+                    ⚠️ Delete all
+                </button>
+                <span id="selectedCount" style="font-size:0.75rem;color:#888;margin-left:auto;">0 selected</span>
+            </div>`;
+    }
+
+    // ── Names list with checkboxes ──
     document.getElementById('namesGrid').innerHTML = FAMILY_DB.people.map(person => {
         const bg = getColorForFamily(person.family_name);
         const tx = getTextColor(bg);
         return `<div class="name-item">
-            <div>
-                <strong>${escapeHtml(person.name)}</strong>
-                <span style="font-size:0.65rem;color:#b08052;margin-left:0.3rem;">#${person.uid||''}</span>
-                ${person.family_name ? `<span style="background:${bg};color:${tx};font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:0.5rem;margin-left:0.3rem;">${escapeHtml(person.family_name)}</span>` : ''}
-                ${isRootPerson(person) ? '<span style="font-size:0.6rem;color:#856404;margin-left:0.3rem;">👑 root</span>' : ''}
-                <br><small>DOB: ${person.dob||'Not set'} · Owner: ${personOwners[person.id]||'Unknown'}</small>
-            </div>
-            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-                <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️ Delete</button>
-            </div>
+            <label style="display:flex;align-items:center;gap:0.5rem;flex:1;cursor:pointer;min-width:0;">
+                <input type="checkbox" class="person-checkbox" value="${person.id}"
+                       style="width:auto;flex-shrink:0;cursor:pointer;accent-color:#c2894b;"
+                       onchange="updateSelectedCount()">
+                <div style="min-width:0;">
+                    <strong>${escapeHtml(person.name)}</strong>
+                    <span style="font-size:0.65rem;color:#b08052;margin-left:0.3rem;">#${person.uid||''}</span>
+                    ${person.family_name ? `<span style="background:${bg};color:${tx};font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:0.5rem;margin-left:0.3rem;">${escapeHtml(person.family_name)}</span>` : ''}
+                    ${isRootPerson(person) ? '<span style="font-size:0.6rem;color:#856404;margin-left:0.3rem;">👑 root</span>' : ''}
+                    <br><small>DOB: ${person.dob||'Not set'} · Owner: ${personOwners[person.id]||'Unknown'}</small>
+                </div>
+            </label>
+            <button class="delete-btn" onclick="deletePersonHandler('${person.id}')">🗑️</button>
         </div>`;
     }).join('');
 }
+
+window.toggleSelectAll = function(checked) {
+    document.querySelectorAll('.person-checkbox').forEach(cb => cb.checked = checked);
+    updateSelectedCount();
+};
+
+window.updateSelectedCount = function() {
+    const checked = document.querySelectorAll('.person-checkbox:checked').length;
+    const total   = document.querySelectorAll('.person-checkbox').length;
+    const countEl = document.getElementById('selectedCount');
+    if (countEl) countEl.textContent = `${checked} of ${total} selected`;
+    // Sync select-all checkbox state
+    const selAll = document.getElementById('selectAllCheckbox');
+    if (selAll) {
+        selAll.checked       = checked === total && total > 0;
+        selAll.indeterminate = checked > 0 && checked < total;
+    }
+};
+
+// ── Shared confirm modal for destructive actions ──
+function showConfirmModal(message, onConfirm) {
+    document.getElementById('adminConfirmModal')?.remove();
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="adminConfirmModal"
+             style="position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;
+                    align-items:center;justify-content:center;z-index:20000;padding:1rem;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:380px;
+                        width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+                <p style="font-size:0.9rem;color:#3a2010;margin-bottom:1.25rem;line-height:1.5;">
+                    ${message}
+                </p>
+                <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+                    <button onclick="document.getElementById('adminConfirmModal').remove()"
+                            style="background:#6c757d;color:white;border:none;border-radius:0.5rem;
+                                   padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">
+                        Cancel
+                    </button>
+                    <button id="adminConfirmOkBtn"
+                            style="background:#dc3545;color:white;border:none;border-radius:0.5rem;
+                                   padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        </div>`);
+    document.getElementById('adminConfirmOkBtn').onclick = () => {
+        document.getElementById('adminConfirmModal')?.remove();
+        onConfirm();
+    };
+}
+
+window.deleteSelectedHandler = async function() {
+    if (!isAdmin) { alert('Admins only.'); return; }
+    const checked = Array.from(document.querySelectorAll('.person-checkbox:checked')).map(cb => cb.value);
+    if (!checked.length) { alert('No members selected.'); return; }
+    showConfirmModal(
+        `Delete <strong>${checked.length}</strong> selected member${checked.length > 1 ? 's' : ''}?<br>This cannot be undone.`,
+        async () => {
+            try {
+                for (const id of checked) await deletePersonFromDB(id);
+                await updateAdminPanel();
+            } catch(e) { alert(`Failed: ${e.message}`); }
+        }
+    );
+};
+
+window.deleteAllHandler = async function() {
+    if (!isAdmin) { alert('Admins only.'); return; }
+    if (!FAMILY_DB.people.length) { alert('Nothing to delete.'); return; }
+    showConfirmModal(
+        `⚠️ Delete <strong>ALL ${FAMILY_DB.people.length} members</strong>?<br>This will wipe the entire tree and <strong>cannot be undone</strong>.`,
+        async () => {
+            try {
+                for (const person of [...FAMILY_DB.people]) await deletePersonFromDB(person.id);
+                try {
+                    await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.__na__`, {
+                        method: 'DELETE',
+                        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+                    });
+                } catch(e) { /* placeholder may not exist */ }
+                await updateAdminPanel();
+            } catch(e) { alert(`Failed: ${e.message}`); }
+        }
+    );
+};
 
 window.toggleRootHandler = async function(personId) {
     if (!isAdmin) { alert('Admins only.'); return; }
