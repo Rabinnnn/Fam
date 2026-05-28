@@ -199,108 +199,81 @@
 
             <form id="contributeForm">
 
+                <!-- ── YOUR FULL NAME (plain text, no dropdown) ── -->
                 <div class="form-group">
                     <label>Your Full Name *</label>
-                    <input type="text" id="userFullName" required placeholder="First Name Last Name">
-                    <div class="info-note">⚠️ Must include both first and last name</div>
+                    <input type="text" id="userFullName" required
+                           placeholder="First Name Last Name" style="width:100%;">
+                    <div class="info-note">⚠️ First and last name required</div>
                 </div>
 
-                <div class="form-group">
-                    <label>Your Gender</label>
-                    <select id="userGender">
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>📅 Date of Birth <span style="font-weight:400;color:#888;">(optional)</span></label>
-                    <input type="date" id="userDob" style="cursor:pointer;">
-                </div>
-
-                <!-- ── FAMILY NAME ── -->
+                <!-- ── YOUR FAMILY NAME (with dropdown) ── -->
                 <div class="form-group">
                     <label>🏠 Your Family Name *</label>
-                    <div class="family-name-wrap">
-                        <input type="hidden" id="familyNameMode" value="new">
-                        <select id="familyNameSelect" style="display:none;">
-                            <option value="">-- Select existing family --</option>
-                        </select>
-                        <input type="text" id="familyNameInput" placeholder="Type your family name (e.g. Smith)">
-                        <button type="button" id="familyNameToggleBtn" class="toggle-mode-btn"
-                                onclick="toggleFamilyNameMode()">📋 Choose Existing</button>
-                    </div>
-                    <div class="info-note">⚠️ Required. Choose an existing family or type a new one.</div>
+                    <input type="text" id="familyNameInput" list="dl-families"
+                           placeholder="e.g. Smith" style="width:100%;">
+                    <div class="info-note">⚠️ Required</div>
                 </div>
 
-                <!-- ── FATHER ── -->
+                <!-- ── GENDER + DOB (side by side) ── -->
                 <div class="form-group">
-                    <label>Father's Full Name &amp; Family</label>
-                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-                        <div style="flex:1;min-width:140px;">
+                    <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:120px;">
+                            <label>Gender</label>
+                            <select id="userGender" style="width:100%;">
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:120px;">
+                            <label>📅 Date of Birth <span style="font-weight:400;color:#888;">(optional)</span></label>
+                            <input type="date" id="userDob" style="cursor:pointer;width:100%;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── FATHER'S DETAILS (stacked vertically) ── -->
+                <div class="form-group">
+                    <label>Father's Details</label>
+                    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                        <div>
                             <div class="mode-indicator" style="margin-bottom:0.25rem;">👤 Father's Name</div>
-                            <div id="fatherContainer">
-                                <div class="parent-selector">
-                                    <select id="fatherSelect" style="display:none;width:100%;">
-                                        <option value="">-- Select Father --</option>
-                                    </select>
-                                    <input type="text" id="fatherName" placeholder="First Name Last Name" style="width:100%;">
-                                </div>
-                            </div>
-                            <button type="button" class="toggle-mode-btn" style="width:100%;margin-top:0.3rem;"
-                                    onclick="toggleParentMode('father')">📋 Use Existing</button>
-                            <div class="mode-indicator" id="fatherModeIndicator">✏️ Manual entry mode</div>
+                            <input type="text" id="fatherName" list="dl-people"
+                                   placeholder="First Name Last Name" style="width:100%;"
+                                   oninput="onPersonInput('fatherName','fatherFamilyNameInput')">
                         </div>
-                        <div style="flex:1;min-width:140px;">
+                        <div>
                             <div class="mode-indicator" style="margin-bottom:0.25rem;">🏠 Father's Family</div>
-                            <div class="family-name-wrap">
-                                <input type="hidden" id="fatherFamilyNameMode" value="new">
-                                <select id="fatherFamilyNameSelect" style="display:none;width:100%;">
-                                    <option value="">-- Select family --</option>
-                                </select>
-                                <input type="text" id="fatherFamilyNameInput" placeholder="Father's family name" style="width:100%;">
-                                <button type="button" class="toggle-mode-btn" style="width:100%;margin-top:0.3rem;"
-                                        onclick="toggleParentFamilyMode('father')">📋 Choose Existing</button>
-                            </div>
+                            <input type="text" id="fatherFamilyNameInput" list="dl-families"
+                                   placeholder="Father's family name" style="width:100%;">
                         </div>
                     </div>
-                    <div class="info-note" style="margin-top:0.4rem;">Include both first and last name · specify father's family separately</div>
+                    <div class="info-note" style="margin-top:0.4rem;">First and last name · father's family name separately</div>
                 </div>
 
-                <!-- ── MOTHER ── -->
+                <!-- ── MOTHER'S DETAILS (stacked vertically) ── -->
                 <div class="form-group">
-                    <label>Mother's Full Name &amp; Family</label>
-                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-                        <div style="flex:1;min-width:140px;">
+                    <label>Mother's Details</label>
+                    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                        <div>
                             <div class="mode-indicator" style="margin-bottom:0.25rem;">👤 Mother's Name</div>
-                            <div id="motherContainer">
-                                <div class="parent-selector">
-                                    <select id="motherSelect" style="display:none;width:100%;">
-                                        <option value="">-- Select Mother --</option>
-                                    </select>
-                                    <input type="text" id="motherName" placeholder="First Name Last Name" style="width:100%;">
-                                </div>
-                            </div>
-                            <button type="button" class="toggle-mode-btn" style="width:100%;margin-top:0.3rem;"
-                                    onclick="toggleParentMode('mother')">📋 Use Existing</button>
-                            <div class="mode-indicator" id="motherModeIndicator">✏️ Manual entry mode</div>
+                            <input type="text" id="motherName" list="dl-people"
+                                   placeholder="First Name Last Name" style="width:100%;"
+                                   oninput="onPersonInput('motherName','motherFamilyNameInput')">
                         </div>
-                        <div style="flex:1;min-width:140px;">
+                        <div>
                             <div class="mode-indicator" style="margin-bottom:0.25rem;">🏠 Mother's Family</div>
-                            <div class="family-name-wrap">
-                                <input type="hidden" id="motherFamilyNameMode" value="new">
-                                <select id="motherFamilyNameSelect" style="display:none;width:100%;">
-                                    <option value="">-- Select family --</option>
-                                </select>
-                                <input type="text" id="motherFamilyNameInput" placeholder="Mother's family name" style="width:100%;">
-                                <button type="button" class="toggle-mode-btn" style="width:100%;margin-top:0.3rem;"
-                                        onclick="toggleParentFamilyMode('mother')">📋 Choose Existing</button>
-                            </div>
+                            <input type="text" id="motherFamilyNameInput" list="dl-families"
+                                   placeholder="Mother's family name" style="width:100%;">
                         </div>
                     </div>
-                    <div class="info-note" style="margin-top:0.4rem;">Include both first and last name · specify mother's family separately</div>
+                    <div class="info-note" style="margin-top:0.4rem;">First and last name · mother's family name separately</div>
                 </div>
+
+                <!-- datalists — populated by JS -->
+                <datalist id="dl-people"></datalist>
+                <datalist id="dl-families"></datalist>
 
                 <button type="submit" class="submit-btn">🌳 Add to Family Tree</button>
             </form>

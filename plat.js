@@ -8,8 +8,6 @@ let currentUser = null;
 let isAdmin = false;
 let FAMILY_DB = { people: [] };
 let FAMILY_COLORS = {};   // family_name → hex color
-let fatherMode = 'manual';
-let motherMode = 'manual';
 let personOwners = {};
 
 // Predefined palette — warm, distinguishable, accessible
@@ -161,7 +159,7 @@ function renderLegend(containerId) {
     el.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.75rem;
                     padding:0.6rem 0.8rem;background:#fcf8ef;border-radius:0.75rem;border:1px solid #e2cfb0;">
-            <span style="font-size:0.75rem;font-weight:700;color:#5a3e2b;margin-right:0.25rem;">Families Legend:</span>
+            <span style="font-size:0.75rem;font-weight:700;color:#5a3e2b;margin-right:0.25rem;">Legend:</span>
             ${activeFamilies.map(fn => {
                 const bg = FAMILY_COLORS[fn] || '#e8dcc8';
                 const tx = getTextColor(bg);
@@ -174,128 +172,99 @@ function renderLegend(containerId) {
 }
 
 // ==============================================================
-// FAMILY NAME FIELD HELPERS
+// DATALIST HELPERS — IMPROVED VERSION
 // ==============================================================
-function populateFamilyNameDropdown() {
-    const existing = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
-    const selectors = [
-        'familyNameSelect',
-        'fatherFamilyNameSelect',
-        'motherFamilyNameSelect'
-    ];
-    selectors.forEach(selId => {
-        const sel = document.getElementById(selId);
-        if (!sel) return;
-        const current = sel.value; // preserve current selection
-        sel.innerHTML = '<option value="">-- Select existing family --</option>';
-        existing.forEach(fn => {
-            const opt = document.createElement('option');
-            opt.value = fn; opt.textContent = fn;
-            sel.appendChild(opt);
-        });
-        if (current) sel.value = current;
+
+// Build a lookup map: person.name (normalized) → person object
+// For multiple people with the same name, we store an array.
+function buildPersonNameMap() {
+    const map = new Map(); // key: name (lowercase trimmed) → array of persons
+    FAMILY_DB.people.forEach(p => {
+        const key = p.name.trim().toLowerCase();
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(p);
+    });
+    return map;
+}
+window._personNameMap = new Map();
+
+// Populate the datalist for names (father/mother inputs)
+// Options show "Name [FamilyName]" as display text, but the value is just the clean name.
+function populateParentDropdowns() {
+    const dl = document.getElementById('dl-people');
+    if (!dl) return;
+    window._personNameMap = buildPersonNameMap();
+    dl.innerHTML = '';
+    // Add an option for each person, but use the person's name as value, and label with family hint
+    FAMILY_DB.people.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.name;   // clean name, no brackets
+        opt.textContent = p.family_name ? `${p.name} [${p.family_name}]` : p.name;
+        dl.appendChild(opt);
     });
 }
 
-// Returns the family name from the contribute form
-function getFamilyNameValue() {
-    const sel = document.getElementById('familyNameSelect');
-    const inp = document.getElementById('familyNameInput');
-    const mode = document.getElementById('familyNameMode')?.value || 'new';
-    if (mode === 'existing' && sel) return sel.value.trim();
-    if (inp) return inp.value.trim();
-    return '';
+function populateFamilyNameDropdown() {
+    const dl = document.getElementById('dl-families');
+    if (!dl) return;
+    const families = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
+    dl.innerHTML = '';
+    families.forEach(fn => {
+        const opt = document.createElement('option');
+        opt.value = fn;
+        dl.appendChild(opt);
+    });
 }
 
-window.toggleFamilyNameMode = function() {
-    const sel  = document.getElementById('familyNameSelect');
-    const inp  = document.getElementById('familyNameInput');
-    const btn  = document.getElementById('familyNameToggleBtn');
-    const mode = document.getElementById('familyNameMode');
-    if (!sel || !inp || !mode) return;
-    if (mode.value === 'new') {
-        sel.style.display = 'block'; inp.style.display = 'none';
-        btn.textContent = '✏️ Enter New Name'; mode.value = 'existing';
+// Called oninput for any person name field (fatherName, motherName)
+// It auto-fills the corresponding family field if the typed name matches exactly one person.
+// If no match or multiple matches, it clears the family field (user must pick manually).
+window.onPersonInput = function(nameInputId, familyInputId) {
+    const nameInp   = document.getElementById(nameInputId);
+    const familyInp = document.getElementById(familyInputId);
+    if (!nameInp || !familyInp) return;
+    const raw = nameInp.value.trim();
+    if (!raw) {
+        familyInp.value = '';
+        return;
+    }
+    const key = raw.toLowerCase();
+    const matches = window._personNameMap.get(key) || [];
+    if (matches.length === 1) {
+        // Exactly one person with this name → auto-fill their family name
+        const matchedPerson = matches[0];
+        familyInp.value = matchedPerson.family_name || '';
     } else {
-        sel.style.display = 'none'; inp.style.display = 'block';
-        btn.textContent = '📋 Choose Existing'; mode.value = 'new';
+        // Ambiguous or unknown → clear family field, user must fill manually
+        familyInp.value = '';
     }
 };
 
-// Toggle between dropdown and text input for a parent's family name field
-window.toggleParentFamilyMode = function(parent) {
-    const sel  = document.getElementById(`${parent}FamilyNameSelect`);
-    const inp  = document.getElementById(`${parent}FamilyNameInput`);
-    const mode = document.getElementById(`${parent}FamilyNameMode`);
-    const btn  = inp?.parentElement?.querySelector('.toggle-mode-btn');
-    if (!sel || !inp || !mode) return;
-    if (mode.value === 'new') {
-        sel.style.display = 'block'; inp.style.display = 'none'; inp.value = '';
-        if (btn) btn.textContent = '✏️';
-        mode.value = 'existing';
-    } else {
-        sel.style.display = 'none'; inp.style.display = 'block'; sel.value = '';
-        if (btn) btn.textContent = '📋';
-        mode.value = 'new';
+// Read a parent (father/mother) — returns { id, name } or null
+// If the name matches exactly one existing person, we use that person's ID.
+// Otherwise, we treat it as a new person (id = null, but we keep the name).
+function getParentValue(parent) {
+    const inp = document.getElementById(`${parent}Name`);
+    if (!inp) return null;
+    const raw = inp.value.trim();
+    if (!raw) return null;
+    const key = raw.toLowerCase();
+    const matches = window._personNameMap.get(key) || [];
+    if (matches.length === 1) {
+        const p = matches[0];
+        return { id: p.id, name: p.name };
     }
-};
+    return { id: null, name: raw };
+}
 
-// Read a parent's family name value from whichever mode is active
+// Read a parent's family name
 function getParentFamilyName(parent) {
-    const mode = document.getElementById(`${parent}FamilyNameMode`)?.value || 'new';
-    if (mode === 'existing') return document.getElementById(`${parent}FamilyNameSelect`)?.value.trim() || '';
     return document.getElementById(`${parent}FamilyNameInput`)?.value.trim() || '';
 }
 
-// ==============================================================
-// PARENT DROPDOWN HELPERS
-// ==============================================================
-function populateParentDropdowns() {
-    const fSel = document.getElementById('fatherSelect');
-    const mSel = document.getElementById('motherSelect');
-    if (!fSel || !mSel) return;
-    const sorted = [...FAMILY_DB.people].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-    fSel.innerHTML = '<option value="">-- Select Father from existing records --</option>';
-    mSel.innerHTML = '<option value="">-- Select Mother from existing records --</option>';
-    sorted.forEach(p => {
-        const label = `${p.name}${p.uid ? ` [#${p.uid}]` : ''}`;
-        [fSel, mSel].forEach(sel => {
-            const opt = document.createElement('option');
-            opt.value = p.id; opt.textContent = label;
-            sel.appendChild(opt);
-        });
-    });
-}
-
-function toggleParentMode(parent) {
-    const sel = document.getElementById(`${parent}Select`);
-    const inp = document.getElementById(`${parent}Name`);
-    const btn = document.querySelector(`#${parent}Container .toggle-mode-btn`);
-    const ind = document.getElementById(`${parent}ModeIndicator`);
-    const mode = parent === 'father' ? fatherMode : motherMode;
-    if (mode === 'manual') {
-        sel.style.display = 'block'; inp.style.display = 'none'; inp.value = '';
-        btn.textContent = '✏️ Enter Manually';
-        ind.innerHTML = '📋 Select mode';
-        if (parent === 'father') fatherMode = 'select'; else motherMode = 'select';
-    } else {
-        sel.style.display = 'none'; inp.style.display = 'block'; sel.value = '';
-        btn.textContent = '📋 Use Existing';
-        ind.innerHTML = '✏️ Manual entry mode';
-        if (parent === 'father') fatherMode = 'manual'; else motherMode = 'manual';
-    }
-}
-
-function getParentValue(parent) {
-    const mode = parent === 'father' ? fatherMode : motherMode;
-    if (mode === 'select') {
-        const id = document.getElementById(`${parent}Select`).value;
-        if (!id) return null;
-        const p = FAMILY_DB.people.find(x => x.id === id);
-        return p ? { id: p.id, name: p.name } : null;
-    }
-    const raw = document.getElementById(`${parent}Name`).value.trim();
-    return raw ? { id: null, name: raw } : null;
+// Read the user's own family name
+function getFamilyNameValue() {
+    return document.getElementById('familyNameInput')?.value.trim() || '';
 }
 
 // ==============================================================
@@ -1285,12 +1254,12 @@ async function contributeToTree(event) {
         document.getElementById('contributeForm').reset();
         ['fatherName','motherName'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
         ['fatherSelect','motherSelect'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
-        if (fatherMode === 'select') toggleParentMode('father');
-        if (motherMode === 'select') toggleParentMode('mother');
-        const fnInp = document.getElementById('familyNameInput');
-        const fnSel = document.getElementById('familyNameSelect');
-        if (fnInp) fnInp.value = '';
-        if (fnSel) fnSel.value = '';
+        // Reset all datalist text inputs
+        ['familyNameInput','fatherName','motherName',
+         'fatherFamilyNameInput','motherFamilyNameInput'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
         // Reset parent family name fields
         ['father','mother'].forEach(p => {
             const pi = document.getElementById(`${p}FamilyNameInput`);
@@ -1299,7 +1268,7 @@ async function contributeToTree(event) {
             if (pi) pi.value = '';
             if (ps) ps.value = '';
             // Return to manual (text) mode
-            if (pm && pm.value === 'existing') toggleParentFamilyMode(p);
+            // nothing to reset for combobox family name fields
         });
 
         showSuccess('contributeSuccessMsg', msg);
@@ -1573,6 +1542,5 @@ async function init() {
     }
 }
 
-window.toggleParentMode = toggleParentMode;
 setupEventListeners();
 init();
