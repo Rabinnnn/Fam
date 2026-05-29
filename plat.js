@@ -1,7 +1,7 @@
 // ==============================================================
 // CONFIGURATION (MySQL via PHP API)
 // ==============================================================
-const API_BASE = '/api.php';   // Adjust path if api.php is in a subfolder
+const API_BASE = './api.php';   // Works on XAMPP and cPanel (same folder)
 
 let currentUser = null;
 let isAdmin = false;
@@ -17,7 +17,7 @@ const COLOR_PALETTE = [
 ];
 
 // ==============================================================
-// HELPER FUNCTIONS (unchanged)
+// HELPER FUNCTIONS
 // ==============================================================
 function generateUID() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -74,10 +74,17 @@ function getTextColor(hex) {
 }
 
 // ==============================================================
-// API CALLS (replaces Supabase)
+// API CALLS (MySQL via PHP API) – FIXED VERSION
 // ==============================================================
 async function apiFetch(path, options = {}) {
-    const url = `${API_BASE}/${path}`;
+    // Convert 'people' or 'people?id=xxx' to query parameters
+    let table = path.split('?')[0];
+    let url = `${API_BASE}?table=${table}`;
+    const match = path.match(/[?&]id=([^&]+)/);
+    if (match) {
+        url += `&id=${encodeURIComponent(match[1])}`;
+    }
+
     const res = await fetch(url, {
         ...options,
         headers: {
@@ -85,15 +92,21 @@ async function apiFetch(path, options = {}) {
             ...(options.headers || {})
         }
     });
-    if (!res.ok) {
-        let errMsg = `HTTP ${res.status}`;
-        try {
-            const errJson = await res.json();
-            errMsg = errJson.error || errMsg;
-        } catch(e) {}
-        throw new Error(errMsg);
+
+    // Always try to parse response as JSON; if it fails, throw a readable error
+    let responseText = await res.text();
+    let data;
+    try {
+        data = JSON.parse(responseText);
+    } catch (e) {
+        console.error('API returned non-JSON:', responseText.substring(0, 200));
+        throw new Error(`API error (${res.status}): ${responseText.substring(0, 100)}`);
     }
-    return res.json();
+
+    if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return data;
 }
 
 async function loadPeople() {
@@ -144,15 +157,20 @@ async function assignColorForFamily(familyName) {
 }
 
 async function ensurePlaceholderExists() {
-    // Check if __na__ exists; if not, create it
-    const existing = FAMILY_DB.people.find(p => p.id === '__na__');
-    if (!existing) {
-        await addPersonToDB({
-            id: '__na__', uid: '__na__', name: 'N/A',
-            gender: 'unknown', parents: '[]',
-            is_root: false, family_name: null
-        });
-        console.log('✅ __na__ placeholder created');
+    // Only try to create __na__ after we have loaded existing people
+    // If it fails (e.g., table empty), we just continue – no blocking
+    try {
+        const existing = FAMILY_DB.people.find(p => p.id === '__na__');
+        if (!existing) {
+            await addPersonToDB({
+                id: '__na__', uid: '__na__', name: 'N/A',
+                gender: 'unknown', parents: '[]',
+                is_root: false, family_name: null
+            });
+            console.log('✅ __na__ placeholder created');
+        }
+    } catch(e) {
+        console.warn('Could not create __na__ placeholder (may already exist or table empty):', e.message);
     }
 }
 
@@ -177,7 +195,7 @@ function renderLegend(containerId) {
 }
 
 // ==============================================================
-// CUSTOM AUTOCOMPLETE DROPDOWN (same as before)
+// CUSTOM AUTOCOMPLETE DROPDOWN
 // ==============================================================
 function setupAutocomplete(inputId, onSelectCallback) {
     const input = document.getElementById(inputId);
@@ -288,7 +306,7 @@ function onPersonAutocomplete(name, family, targetFamilyInputId) {
 }
 
 // ==============================================================
-// DATABASE LOOKUP HELPERS (unchanged)
+// DATABASE LOOKUP HELPERS
 // ==============================================================
 function findPersonById(id) { return FAMILY_DB.people.find(p => p.id === id) || null; }
 function findPeopleByName(name) {
@@ -377,7 +395,7 @@ function populateFamilyNameDropdown() {
 }
 
 // ==============================================================
-// TREE RENDERING & MODALS (WHOLE TREE) - unchanged
+// TREE RENDERING & MODALS (WHOLE TREE)
 // ==============================================================
 function findFamilyClusters() {
     const adj = new Map();
@@ -1375,9 +1393,9 @@ function setupEventListeners() {
 async function init() {
     if (!checkAuth()) return;
     try {
-        await ensurePlaceholderExists();
         await loadFamilyColors();
         await loadPeople();
+        await ensurePlaceholderExists();   // now called AFTER loadPeople, non‑blocking
         setupAutocomplete('fatherName', (name, family) => onPersonAutocomplete(name, family, 'fatherFamilyNameInput'));
         setupAutocomplete('motherName', (name, family) => onPersonAutocomplete(name, family, 'motherFamilyNameInput'));
         if (isAdmin) await updateAdminPanel();
@@ -1385,13 +1403,13 @@ async function init() {
         console.log('✅ App initialized —', FAMILY_DB.people.length, 'people');
     } catch(e) {
         console.error('Init error:', e);
-        ['lineageContainer','wholeTreeContainer'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#c33;font-size:0.85rem;">
+        const container = document.getElementById('wholeTreeContainer');
+        if (container) {
+            container.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#c33;">
                 ❌ Failed to load: ${e.message}<br><br>
-                <button onclick="location.reload()" class="submit-btn" style="margin-top:0.5rem;">🔄 Retry</button>
+                <button onclick="location.reload()" class="submit-btn">🔄 Retry</button>
             </div>`;
-        });
+        }
     }
 }
 
