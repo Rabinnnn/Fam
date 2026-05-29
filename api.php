@@ -10,18 +10,20 @@ header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit(0);
 
-// Database configuration (XAMPP defaults – update for cPanel later)
+// Database configuration (update for your environment)
 $host = 'localhost';
 $db   = 'fam';          // change to your database name
-$user = 'root';
-$pass = '';
+$user = 'root';         // XAMPP default
+$pass = '';             // XAMPP default (empty)
 $charset = 'utf8mb4';
 
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=$charset", $user, $pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
+    $pdo = new PDO($dsn, $user, $pass, $options);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
@@ -120,12 +122,19 @@ elseif ($method === 'PATCH') {
 
 // --- DELETE ---
 elseif ($method === 'DELETE') {
-    if ($table !== 'people') sendJson(['error' => 'Only people table supports DELETE'], 400);
-    if (!$id) sendJson(['error' => 'Missing id parameter'], 400);
     try {
-        $stmt = $pdo->prepare("DELETE FROM people WHERE id = ?");
-        $stmt->execute([$id]);
-        sendJson(['message' => 'Deleted']);
+        if ($table === 'people') {
+            if (!$id) sendJson(['error' => 'Missing id parameter'], 400);
+            $stmt = $pdo->prepare("DELETE FROM people WHERE id = ?");
+            $stmt->execute([$id]);
+            sendJson(['message' => 'Deleted']);
+        } elseif ($table === 'family_colors') {
+            // Delete all rows in family_colors table
+            $stmt = $pdo->prepare("DELETE FROM family_colors");
+            $stmt->execute();
+            sendJson(['message' => 'All family colors deleted']);
+        }
+        sendJson(['error' => 'Invalid table for DELETE'], 400);
     } catch (PDOException $e) {
         sendJson(['error' => 'Delete failed: ' . $e->getMessage()], 500);
     }

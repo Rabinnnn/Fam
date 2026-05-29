@@ -1,7 +1,7 @@
 // ==============================================================
 // CONFIGURATION (MySQL via PHP API)
 // ==============================================================
-const API_BASE = './api.php';   // Works on XAMPP and cPanel (same folder)
+const API_BASE = './api.php';
 
 let currentUser = null;
 let isAdmin = false;
@@ -74,17 +74,15 @@ function getTextColor(hex) {
 }
 
 // ==============================================================
-// API CALLS (MySQL via PHP API) – FIXED VERSION
+// API CALLS
 // ==============================================================
 async function apiFetch(path, options = {}) {
-    // Convert 'people' or 'people?id=xxx' to query parameters
     let table = path.split('?')[0];
     let url = `${API_BASE}?table=${table}`;
     const match = path.match(/[?&]id=([^&]+)/);
     if (match) {
         url += `&id=${encodeURIComponent(match[1])}`;
     }
-
     const res = await fetch(url, {
         ...options,
         headers: {
@@ -92,8 +90,6 @@ async function apiFetch(path, options = {}) {
             ...(options.headers || {})
         }
     });
-
-    // Always try to parse response as JSON; if it fails, throw a readable error
     let responseText = await res.text();
     let data;
     try {
@@ -102,7 +98,6 @@ async function apiFetch(path, options = {}) {
         console.error('API returned non-JSON:', responseText.substring(0, 200));
         throw new Error(`API error (${res.status}): ${responseText.substring(0, 100)}`);
     }
-
     if (!res.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
     }
@@ -138,27 +133,106 @@ async function deletePersonFromDB(personId) {
 async function loadFamilyColors() {
     try {
         const data = await apiFetch('family_colors');
-        data.forEach(row => { FAMILY_COLORS[row.family_name] = row.color; });
-    } catch(e) { console.warn('Color load failed:', e); }
+        if (Array.isArray(data)) {
+            data.forEach(row => {
+                if (row.family_name && row.color) {
+                    FAMILY_COLORS[row.family_name] = row.color;
+                }
+            });
+            console.log(`✅ Loaded ${Object.keys(FAMILY_COLORS).length} family colors from DB`);
+        }
+    } catch(e) {
+        console.warn('Could not load family colors, starting fresh:', e.message);
+        FAMILY_COLORS = {};
+    }
 }
 
+// ==============================================================
+// FOOLPROOF COLOR ASSIGNMENT – GLOBAL UNIQUENESS
+// ==============================================================
+// Promise-based mutex so concurrent calls serialize instead of racing
+let _colorAssignLock = Promise.resolve();
+
 async function assignColorForFamily(familyName) {
-    if (!familyName || FAMILY_COLORS[familyName]) return;
-    const usedColors = Object.values(FAMILY_COLORS);
-    const available = COLOR_PALETTE.filter(c => !usedColors.includes(c));
-    const color = available.length > 0 ? available[0] : COLOR_PALETTE[Object.keys(FAMILY_COLORS).length % COLOR_PALETTE.length];
-    FAMILY_COLORS[familyName] = color;
+    if (!familyName) return null;
+
+    // If already in local cache, return immediately — no DB round-trip needed
+    if (FAMILY_COLORS[familyName]) return FAMILY_COLORS[familyName];
+
+    // Chain onto the lock so concurrent calls queue up one at a time
+    _colorAssignLock = _colorAssignLock.then(() => _doAssignColor(familyName));
+    return _colorAssignLock;
+}
+
+async function _doAssignColor(familyName) {
+    // Double-check cache again (a previous queued call may have just set it)
+    if (FAMILY_COLORS[familyName]) return FAMILY_COLORS[familyName];
+
+    // Fetch fresh state from DB to catch anything another browser/session saved
+    let dbRows = [];
+    try {
+        dbRows = await apiFetch('family_colors');
+        if (!Array.isArray(dbRows)) dbRows = [];
+    } catch (e) {
+        console.warn('assignColorForFamily: could not fetch DB colors, using local cache only', e);
+    }
+
+    // Sync DB rows into local cache (but never overwrite what we've already set this session)
+    for (const row of dbRows) {
+        if (row.family_name && row.color && !FAMILY_COLORS[row.family_name]) {
+            FAMILY_COLORS[row.family_name] = row.color;
+        }
+    }
+
+    // If the DB already has a color for this family name, adopt it and done
+    const dbMatch = dbRows.find(r => r.family_name === familyName);
+    if (dbMatch?.color) {
+        FAMILY_COLORS[familyName] = dbMatch.color;
+        return dbMatch.color;
+    }
+
+    // Build the set of ALL colors currently in use (DB + local cache)
+    const usedColors = new Set(Object.values(FAMILY_COLORS).filter(Boolean));
+
+    // Pick the first palette color not yet used
+    let newColor = COLOR_PALETTE.find(c => !usedColors.has(c));
+
+    if (!newColor) {
+        // Palette exhausted — cycle through but pick the least-recently-used one
+        // (deterministic: sort all known family names and use index mod palette length)
+        const allKnown = Object.keys(FAMILY_COLORS).sort();
+        newColor = COLOR_PALETTE[allKnown.length % COLOR_PALETTE.length];
+        console.warn(`⚠️ Palette exhausted. Cycling color ${newColor} for "${familyName}"`);
+    }
+
+    // Reserve it in local cache IMMEDIATELY before the async DB write,
+    // so any other queued call (after us in the lock chain) sees it
+    FAMILY_COLORS[familyName] = newColor;
+
+    // Persist to DB
     try {
         await apiFetch('family_colors', {
             method: 'POST',
-            body: JSON.stringify({ family_name: familyName, color })
+            body: JSON.stringify({ family_name: familyName, color: newColor })
         });
-    } catch(e) { console.warn('Color persist failed:', e); }
+        console.log(`🎨 Assigned ${newColor} to "${familyName}"`);
+    } catch (e) {
+        // If DB write fails, check whether another session won the race and saved a color for us
+        console.error(`Failed to persist color for "${familyName}":`, e);
+        try {
+            const retry = await apiFetch('family_colors');
+            const found = Array.isArray(retry) && retry.find(r => r.family_name === familyName);
+            if (found?.color) {
+                FAMILY_COLORS[familyName] = found.color;
+                return found.color;
+            }
+        } catch (_) { /* keep the locally-assigned color and move on */ }
+    }
+
+    return newColor;
 }
 
 async function ensurePlaceholderExists() {
-    // Only try to create __na__ after we have loaded existing people
-    // If it fails (e.g., table empty), we just continue – no blocking
     try {
         const existing = FAMILY_DB.people.find(p => p.id === '__na__');
         if (!existing) {
@@ -170,7 +244,7 @@ async function ensurePlaceholderExists() {
             console.log('✅ __na__ placeholder created');
         }
     } catch(e) {
-        console.warn('Could not create __na__ placeholder (may already exist or table empty):', e.message);
+        console.warn('Could not create __na__ placeholder:', e.message);
     }
 }
 
@@ -252,15 +326,12 @@ function setupAutocomplete(inputId, onSelectCallback) {
     input.addEventListener('input', (e) => {
         renderSuggestions(e.target.value);
     });
-
     input.addEventListener('focus', () => {
         renderSuggestions(input.value);
     });
-
     input.addEventListener('blur', () => {
         setTimeout(() => hideDropdown(), 200);
     });
-
     input.addEventListener('keydown', (e) => {
         const items = dropdown.querySelectorAll('.autocomplete-item');
         if (items.length === 0) return;
@@ -1022,6 +1093,12 @@ async function addOrGetPerson(nameOrRef, gender = 'unknown', familyName = null) 
     const name  = isRef ? nameOrRef.name : nameOrRef;
     const existingId = isRef ? nameOrRef.id : null;
     if (existingId) return findPersonById(existingId);
+    
+    // CRITICAL: Assign a color for the family name BEFORE creating the person
+    if (familyName) {
+        await assignColorForFamily(familyName);
+    }
+    
     const v = validateFullName(name);
     if (!v.valid) throw new Error(v.message);
     const exactMatches = findPeopleByName(name);
@@ -1058,7 +1135,11 @@ async function contributeToTree(event) {
     showSuccess('contributeSuccessMsg', 'Adding to the family tree…');
 
     try {
-        if (familyName) await assignColorForFamily(familyName);
+        // Assign colors for ALL family names that appear
+        await assignColorForFamily(familyName);
+        if (fatherFamilyName) await assignColorForFamily(fatherFamilyName);
+        if (motherFamilyName) await assignColorForFamily(motherFamilyName);
+        
         let parentIds = [];
         if (fatherRef) {
             const father = await addOrGetPerson(fatherRef, 'male', fatherFamilyName);
@@ -1322,15 +1403,21 @@ window.deleteAllHandler = async function() {
     if (!isAdmin) { alert('Admins only.'); return; }
     if (!FAMILY_DB.people.length) { alert('Nothing to delete.'); return; }
     showConfirmModal(
-        `⚠️ Delete <strong>ALL ${FAMILY_DB.people.length} members</strong>?<br>This will wipe the entire tree and <strong>cannot be undone</strong>.`,
+        `⚠️ Delete <strong>ALL ${FAMILY_DB.people.length} members</strong> and ALL family colors?<br>This will wipe the entire tree and <strong>cannot be undone</strong>.`,
         async () => {
             try {
-                for (const person of [...FAMILY_DB.people]) await deletePersonFromDB(person.id);
+                for (const person of [...FAMILY_DB.people]) {
+                    await deletePersonFromDB(person.id);
+                }
                 try {
                     await apiFetch(`people?id=__na__`, { method: 'DELETE' });
-                } catch(e) { /* placeholder may not exist */ }
-                await updateAdminPanel();
+                } catch(e) { /* ignore */ }
+                await apiFetch('family_colors', { method: 'DELETE' });
+                FAMILY_COLORS = {};
+                await loadPeople();
+                if (isAdmin) await updateAdminPanel();
                 renderWholeFamilyTree();
+                alert('All data (people + colors) deleted successfully.');
             } catch(e) { alert(`Failed: ${e.message}`); }
         }
     );
@@ -1395,12 +1482,12 @@ async function init() {
     try {
         await loadFamilyColors();
         await loadPeople();
-        await ensurePlaceholderExists();   // now called AFTER loadPeople, non‑blocking
+        await ensurePlaceholderExists();
         setupAutocomplete('fatherName', (name, family) => onPersonAutocomplete(name, family, 'fatherFamilyNameInput'));
         setupAutocomplete('motherName', (name, family) => onPersonAutocomplete(name, family, 'motherFamilyNameInput'));
         if (isAdmin) await updateAdminPanel();
         renderWholeFamilyTree();
-        console.log('✅ App initialized —', FAMILY_DB.people.length, 'people');
+        console.log('✅ App initialized —', FAMILY_DB.people.length, 'people,', Object.keys(FAMILY_COLORS).length, 'family colors');
     } catch(e) {
         console.error('Init error:', e);
         const container = document.getElementById('wholeTreeContainer');
