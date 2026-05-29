@@ -148,6 +148,39 @@
         .name-item div strong { font-size:0.85rem; }
         .name-item div small { font-size:0.65rem; }
 
+        /* ── CUSTOM AUTOCOMPLETE DROPDOWN ── */
+        .autocomplete-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e0cfb6;
+            border-radius: 0.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .autocomplete-dropdown.show {
+            display: block;
+        }
+        .autocomplete-item {
+            padding: 0.5rem 0.8rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #f0e4d0;
+        }
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background: #fcf3e4;
+        }
+
         /* ── RESPONSIVE ── */
         @media (min-width:600px) {
             body { padding:1rem; }
@@ -247,15 +280,17 @@
                     </div>
                 </div>
 
-                <!-- FATHER'S DETAILS: Father's Name + Father's Family side by side -->
+                <!-- FATHER'S DETAILS: Father's Name (custom autocomplete) + Father's Family -->
                 <div class="form-group">
                     <label>👨 Father's Details</label>
                     <div class="split-row">
                         <div class="field-col">
                             <div class="mode-indicator">👤 Father's Name</div>
-                            <input type="text" id="fatherName" list="dl-people"
-                                   placeholder="First Name Last Name" style="width:100%;"
-                                   oninput="onPersonInput('fatherName','fatherFamilyNameInput')">
+                            <div class="autocomplete-wrapper">
+                                <input type="text" id="fatherName" autocomplete="off"
+                                       placeholder="First Name Last Name" style="width:100%;">
+                                <div id="fatherAutocomplete" class="autocomplete-dropdown"></div>
+                            </div>
                         </div>
                         <div class="field-col">
                             <div class="mode-indicator">🏠 Father's Family</div>
@@ -266,15 +301,17 @@
                     <div class="info-note" style="margin-top:0.5rem;">First and last name · father's family name separately</div>
                 </div>
 
-                <!-- MOTHER'S DETAILS: Mother's Name + Mother's Family side by side -->
+                <!-- MOTHER'S DETAILS: Mother's Name (custom autocomplete) + Mother's Family -->
                 <div class="form-group">
                     <label>👩 Mother's Details</label>
                     <div class="split-row">
                         <div class="field-col">
                             <div class="mode-indicator">👤 Mother's Name</div>
-                            <input type="text" id="motherName" list="dl-people"
-                                   placeholder="First Name Last Name" style="width:100%;"
-                                   oninput="onPersonInput('motherName','motherFamilyNameInput')">
+                            <div class="autocomplete-wrapper">
+                                <input type="text" id="motherName" autocomplete="off"
+                                       placeholder="First Name Last Name" style="width:100%;">
+                                <div id="motherAutocomplete" class="autocomplete-dropdown"></div>
+                            </div>
                         </div>
                         <div class="field-col">
                             <div class="mode-indicator">🏠 Mother's Family</div>
@@ -285,8 +322,7 @@
                     <div class="info-note" style="margin-top:0.5rem;">First and last name · mother's family name separately</div>
                 </div>
 
-                <!-- datalists populated dynamically -->
-                <datalist id="dl-people"></datalist>
+                <!-- datalist for families (only used for family name suggestions) -->
                 <datalist id="dl-families"></datalist>
 
                 <button type="submit" class="submit-btn">🌳 Add to Family Tree</button>
@@ -402,87 +438,7 @@
 <script src="goog_script.js"></script>
 <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
-<!-- Mock simulation of the external scripts that would normally handle data -->
-<script>
-    // Provide a robust mock / stub for the external functions used by layout 
-    // (onPersonInput, etc) so that no JS errors appear even if actual backend is missing.
-    // This ensures the UI remains fully functional for demonstration.
-    window.onPersonInput = function(personId, familyIdInput) {
-        // Dummy function: would normally sync names with family suggestion.
-        // Keeping empty to avoid errors; real backend would provide datalist.
-        console.log(`Person input triggered: ${personId}, family: ${familyIdInput}`);
-    };
-    
-    // Additional dummy handlers to simulate dynamic behavior + prevent missing function errors
-    window.attachEventListeners = window.attachEventListeners || function(){};
-    if(typeof window.initApp === 'undefined') {
-        window.initApp = function() {
-            console.log("App UI ready — side-by-side layout active");
-            const form = document.getElementById('contributeForm');
-            if(form) {
-                form.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    const msgDiv = document.getElementById('contributeSuccessMsg');
-                    if(msgDiv) {
-                        msgDiv.innerText = '✓ (Demo) Family member added! Full backend integration would store this.';
-                        msgDiv.classList.add('show');
-                        setTimeout(() => msgDiv.classList.remove('show'), 3000);
-                    }
-                });
-            }
-            // Basic tab switching UI
-            const tabs = document.querySelectorAll('.tab-btn');
-            tabs.forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const targetTab = this.getAttribute('data-tab');
-                    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-                    document.getElementById(targetTab + 'Tab')?.classList.add('active');
-                    tabs.forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                });
-            });
-            const logoutBtn = document.getElementById('logoutBtn');
-            if(logoutBtn) logoutBtn.addEventListener('click', () => alert("Logged out (demo)"));
-            const usernameSpan = document.getElementById('usernameDisplay');
-            if(usernameSpan) usernameSpan.innerText = "GuestUser";
-            // mock export
-            const exportLineage = document.getElementById('exportLineageBtn');
-            if(exportLineage) exportLineage.addEventListener('click', () => alert("Export lineage (demo)"));
-            const exportWhole = document.getElementById('exportWholeTreeBtn');
-            if(exportWhole) exportWhole.addEventListener('click', () => alert("Export full tree (demo)"));
-            // Simulate legend & tree demo remove loading
-            const wholeContainer = document.getElementById('wholeTreeContainer');
-            if(wholeContainer && wholeContainer.innerText.includes('Loading')) {
-                wholeContainer.innerHTML = '<div class="tree-title" style="margin-bottom:1rem;">🌳 Family Tree Preview</div><div style="padding:1rem; background:#fff2e0; border-radius:1rem;"><p style="text-align:center;">✨ Family tree visual will appear here after connecting to backend. Your side-by-side form layout is active. ✨</p></div>';
-            }
-        };
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-        if(window.initApp) window.initApp();
-        // Additional demo styling to ensure datalists have some mock entries
-        const peopleDatalist = document.getElementById('dl-people');
-        if(peopleDatalist) {
-            const demoOpts = ['Elena Martinez', 'Carlos Rivera', 'Maria Gonzalez', 'David Chen'];
-            demoOpts.forEach(name => {
-                const opt = document.createElement('option');
-                opt.value = name;
-                peopleDatalist.appendChild(opt);
-            });
-        }
-        const familiesDatalist = document.getElementById('dl-families');
-        if(familiesDatalist) {
-            const fams = ['Martinez', 'Rivera', 'Gonzalez', 'Chen', 'Smith', 'Johnson'];
-            fams.forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = f;
-                familiesDatalist.appendChild(opt);
-            });
-        }
-    });
-</script>
-<!-- external simulation scripts placeholder (plat.js, confirm.js would extend functionality) -->
-<script>// additional placeholder for required external files if any</script>
-<script src="plat.js" onerror="console.warn('plat.js not loaded, demo fallback active')"></script>
-<script src="confirm.js" onerror="console.warn('confirm.js not loaded')"></script>
+<!-- Main application logic (plat.js) -->
+<script src="plat.js"></script>
 </body>
 </html>
