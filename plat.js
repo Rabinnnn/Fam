@@ -1,8 +1,7 @@
 // ==============================================================
-// SUPABASE CONFIGURATION
+// CONFIGURATION (MySQL via PHP API)
 // ==============================================================
-const SUPABASE_URL = 'https://snkcdsfzxjruxhwxnoxh.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_-IHen1e8xLiVH9_mJBpKmA_0GQSRFJx';
+const API_BASE = '/api.php';   // Adjust path if api.php is in a subfolder
 
 let currentUser = null;
 let isAdmin = false;
@@ -17,6 +16,9 @@ const COLOR_PALETTE = [
     '#a06abf','#3abf7a','#bf3a3a','#3a6abf','#bf7a6a'
 ];
 
+// ==============================================================
+// HELPER FUNCTIONS (unchanged)
+// ==============================================================
 function generateUID() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let uid = '';
@@ -71,6 +73,62 @@ function getTextColor(hex) {
     return luminance > 0.55 ? '#3a2010' : '#fff8f0';
 }
 
+// ==============================================================
+// API CALLS (replaces Supabase)
+// ==============================================================
+async function apiFetch(path, options = {}) {
+    const url = `${API_BASE}/${path}`;
+    const res = await fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {})
+        }
+    });
+    if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+            const errJson = await res.json();
+            errMsg = errJson.error || errMsg;
+        } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return res.json();
+}
+
+async function loadPeople() {
+    const data = await apiFetch('people');
+    FAMILY_DB.people = data.filter(p => !p.id.startsWith('__'));
+    populateFamilyNameDropdown();
+    loadPersonOwners();
+    return FAMILY_DB.people;
+}
+
+async function addPersonToDB(person) {
+    await apiFetch('people', { method: 'POST', body: JSON.stringify(person) });
+    if (!personOwners[person.id]) { personOwners[person.id] = currentUser; savePersonOwners(); }
+    return true;
+}
+
+async function updatePersonInDB(personId, updates) {
+    await apiFetch(`people?id=${encodeURIComponent(personId)}`, { method: 'PATCH', body: JSON.stringify(updates) });
+    return true;
+}
+
+async function deletePersonFromDB(personId) {
+    await apiFetch(`people?id=${encodeURIComponent(personId)}`, { method: 'DELETE' });
+    delete personOwners[personId];
+    savePersonOwners();
+    return true;
+}
+
+async function loadFamilyColors() {
+    try {
+        const data = await apiFetch('family_colors');
+        data.forEach(row => { FAMILY_COLORS[row.family_name] = row.color; });
+    } catch(e) { console.warn('Color load failed:', e); }
+}
+
 async function assignColorForFamily(familyName) {
     if (!familyName || FAMILY_COLORS[familyName]) return;
     const usedColors = Object.values(FAMILY_COLORS);
@@ -78,51 +136,24 @@ async function assignColorForFamily(familyName) {
     const color = available.length > 0 ? available[0] : COLOR_PALETTE[Object.keys(FAMILY_COLORS).length % COLOR_PALETTE.length];
     FAMILY_COLORS[familyName] = color;
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/family_colors`, {
+        await apiFetch('family_colors', {
             method: 'POST',
-            headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'resolution=merge-duplicates'
-            },
             body: JSON.stringify({ family_name: familyName, color })
         });
     } catch(e) { console.warn('Color persist failed:', e); }
 }
 
 async function ensurePlaceholderExists() {
-    try {
-        const check = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.__na__&select=id`, {
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+    // Check if __na__ exists; if not, create it
+    const existing = FAMILY_DB.people.find(p => p.id === '__na__');
+    if (!existing) {
+        await addPersonToDB({
+            id: '__na__', uid: '__na__', name: 'N/A',
+            gender: 'unknown', parents: '[]',
+            is_root: false, family_name: null
         });
-        const rows = await check.json();
-        if (!Array.isArray(rows) || rows.length === 0) {
-            await fetch(`${SUPABASE_URL}/rest/v1/people`, {
-                method: 'POST',
-                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                           'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-                body: JSON.stringify({
-                    id: '__na__', uid: '__na__', name: 'N/A',
-                    gender: 'unknown', parents: '[]',
-                    is_root: false, family_name: null
-                })
-            });
-            console.log('✅ __na__ placeholder created');
-        }
-    } catch(e) { console.warn('Placeholder check failed:', e); }
-}
-
-async function loadFamilyColors() {
-    try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/family_colors?select=*`, {
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-        });
-        if (res.ok) {
-            const data = await res.json();
-            data.forEach(row => { FAMILY_COLORS[row.family_name] = row.color; });
-        }
-    } catch(e) { console.warn('Color load failed:', e); }
+        console.log('✅ __na__ placeholder created');
+    }
 }
 
 function renderLegend(containerId) {
@@ -146,7 +177,7 @@ function renderLegend(containerId) {
 }
 
 // ==============================================================
-// CUSTOM AUTOCOMPLETE DROPDOWN (replaces datalist)
+// CUSTOM AUTOCOMPLETE DROPDOWN (same as before)
 // ==============================================================
 function setupAutocomplete(inputId, onSelectCallback) {
     const input = document.getElementById(inputId);
@@ -257,53 +288,8 @@ function onPersonAutocomplete(name, family, targetFamilyInputId) {
 }
 
 // ==============================================================
-// SUPABASE API
+// DATABASE LOOKUP HELPERS (unchanged)
 // ==============================================================
-async function loadPeople() {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/people?select=*`, {
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    const allPeople = await res.json();
-    FAMILY_DB.people = allPeople.filter(p => !p.id.startsWith('__'));
-    populateFamilyNameDropdown();
-    loadPersonOwners();
-    return FAMILY_DB.people;
-}
-
-async function addPersonToDB(person) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/people`, {
-        method: 'POST',
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                   'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-        body: JSON.stringify(person)
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-    if (!personOwners[person.id]) { personOwners[person.id] = currentUser; savePersonOwners(); }
-    return true;
-}
-
-async function updatePersonInDB(personId, updates) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
-        method: 'PATCH',
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                   'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-    return true;
-}
-
-async function deletePersonFromDB(personId) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.${personId}`, {
-        method: 'DELETE',
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    delete personOwners[personId]; savePersonOwners();
-    return true;
-}
-
 function findPersonById(id) { return FAMILY_DB.people.find(p => p.id === id) || null; }
 function findPeopleByName(name) {
     const l = name.trim().toLowerCase();
@@ -391,7 +377,7 @@ function populateFamilyNameDropdown() {
 }
 
 // ==============================================================
-// TREE RENDERING & MODALS (WHOLE TREE)
+// TREE RENDERING & MODALS (WHOLE TREE) - unchanged
 // ==============================================================
 function findFamilyClusters() {
     const adj = new Map();
@@ -1082,7 +1068,7 @@ async function contributeToTree(event) {
         });
         showSuccess('contributeSuccessMsg', `Added "${userName}" [#${uid}]`);
         if (isAdmin) await updateAdminPanel();
-        renderWholeFamilyTree(); // refresh tree after addition
+        renderWholeFamilyTree();
     } catch(e) { showError('contributeErrorMsg', `Failed: ${e.message}`); }
 }
 
@@ -1323,10 +1309,7 @@ window.deleteAllHandler = async function() {
             try {
                 for (const person of [...FAMILY_DB.people]) await deletePersonFromDB(person.id);
                 try {
-                    await fetch(`${SUPABASE_URL}/rest/v1/people?id=eq.__na__`, {
-                        method: 'DELETE',
-                        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-                    });
+                    await apiFetch(`people?id=__na__`, { method: 'DELETE' });
                 } catch(e) { /* placeholder may not exist */ }
                 await updateAdminPanel();
                 renderWholeFamilyTree();
@@ -1395,11 +1378,9 @@ async function init() {
         await ensurePlaceholderExists();
         await loadFamilyColors();
         await loadPeople();
-        // Setup custom autocomplete for father and mother
         setupAutocomplete('fatherName', (name, family) => onPersonAutocomplete(name, family, 'fatherFamilyNameInput'));
         setupAutocomplete('motherName', (name, family) => onPersonAutocomplete(name, family, 'motherFamilyNameInput'));
         if (isAdmin) await updateAdminPanel();
-        // Render the whole tree initially (remove loading spinner)
         renderWholeFamilyTree();
         console.log('✅ App initialized —', FAMILY_DB.people.length, 'people');
     } catch(e) {
