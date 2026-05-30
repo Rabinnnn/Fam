@@ -495,12 +495,30 @@ function findFamilyClusters() {
     return clusters;
 }
 
+// function clusterFamilyName(cluster) {
+//     const roots = cluster.filter(isRootPerson);
+//     const base  = roots.length ? roots[0] : cluster[0];
+//     if (!base?.name) return 'Unknown Family';
+//     const parts = base.name.split(' ');
+//     return parts[parts.length - 1] + ' Family';
+// }
 function clusterFamilyName(cluster) {
+    // Priority 1: root person with a family_name set
     const roots = cluster.filter(isRootPerson);
-    const base  = roots.length ? roots[0] : cluster[0];
-    if (!base?.name) return 'Unknown Family';
-    const parts = base.name.split(' ');
-    return parts[parts.length - 1] + ' Family';
+    for (const r of roots) {
+        if (r.family_name) return r.family_name;
+    }
+    // Priority 2: any root person exists (fallback to their last name)
+    if (roots.length && roots[0]?.name) {
+        const parts = roots[0].name.split(' ');
+        return parts[parts.length - 1] + ' Family';
+    }
+    // Priority 3: scan entire cluster for any member with a family_name
+    for (const p of cluster) {
+        if (p.family_name) return p.family_name;
+    }
+    // Priority 4: last resort
+    return 'Unknown Family';
 }
 
 function buildWholeTreeRows(cluster) {
@@ -577,7 +595,7 @@ function renderWholeFamilyTree() {
             html += `<div class="tree-node add-gen-btn"
                           onclick="showWholeTreeAddModal(${genNum},'${rowIds}',${idx},${idx===0})">＋ Add</div>`;
             html += `</div>`;
-            if (idx < rows.length - 1) html += `<div class="connector-line">▼</div>`;
+            // if (idx < rows.length - 1) html += `<div class="connector-line">▼</div>`;
         });
         html += `</div>`;
         return html;
