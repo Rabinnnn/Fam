@@ -109,6 +109,7 @@ async function loadPeople() {
     FAMILY_DB.people = data.filter(p => !p.id.startsWith('__'));
     populateFamilyNameDropdown();
     loadPersonOwners();
+    refreshGenerationCache();
     return FAMILY_DB.people;
 }
 
@@ -150,25 +151,17 @@ async function loadFamilyColors() {
 // ==============================================================
 // FOOLPROOF COLOR ASSIGNMENT – GLOBAL UNIQUENESS
 // ==============================================================
-// Promise-based mutex so concurrent calls serialize instead of racing
 let _colorAssignLock = Promise.resolve();
 
 async function assignColorForFamily(familyName) {
     if (!familyName) return null;
-
-    // If already in local cache, return immediately — no DB round-trip needed
     if (FAMILY_COLORS[familyName]) return FAMILY_COLORS[familyName];
-
-    // Chain onto the lock so concurrent calls queue up one at a time
     _colorAssignLock = _colorAssignLock.then(() => _doAssignColor(familyName));
     return _colorAssignLock;
 }
 
 async function _doAssignColor(familyName) {
-    // Double-check cache again (a previous queued call may have just set it)
     if (FAMILY_COLORS[familyName]) return FAMILY_COLORS[familyName];
-
-    // Fetch fresh state from DB to catch anything another browser/session saved
     let dbRows = [];
     try {
         dbRows = await apiFetch('family_colors');
@@ -176,40 +169,24 @@ async function _doAssignColor(familyName) {
     } catch (e) {
         console.warn('assignColorForFamily: could not fetch DB colors, using local cache only', e);
     }
-
-    // Sync DB rows into local cache (but never overwrite what we've already set this session)
     for (const row of dbRows) {
         if (row.family_name && row.color && !FAMILY_COLORS[row.family_name]) {
             FAMILY_COLORS[row.family_name] = row.color;
         }
     }
-
-    // If the DB already has a color for this family name, adopt it and done
     const dbMatch = dbRows.find(r => r.family_name === familyName);
     if (dbMatch?.color) {
         FAMILY_COLORS[familyName] = dbMatch.color;
         return dbMatch.color;
     }
-
-    // Build the set of ALL colors currently in use (DB + local cache)
     const usedColors = new Set(Object.values(FAMILY_COLORS).filter(Boolean));
-
-    // Pick the first palette color not yet used
     let newColor = COLOR_PALETTE.find(c => !usedColors.has(c));
-
     if (!newColor) {
-        // Palette exhausted — cycle through but pick the least-recently-used one
-        // (deterministic: sort all known family names and use index mod palette length)
         const allKnown = Object.keys(FAMILY_COLORS).sort();
         newColor = COLOR_PALETTE[allKnown.length % COLOR_PALETTE.length];
         console.warn(`⚠️ Palette exhausted. Cycling color ${newColor} for "${familyName}"`);
     }
-
-    // Reserve it in local cache IMMEDIATELY before the async DB write,
-    // so any other queued call (after us in the lock chain) sees it
     FAMILY_COLORS[familyName] = newColor;
-
-    // Persist to DB
     try {
         await apiFetch('family_colors', {
             method: 'POST',
@@ -217,7 +194,6 @@ async function _doAssignColor(familyName) {
         });
         console.log(`🎨 Assigned ${newColor} to "${familyName}"`);
     } catch (e) {
-        // If DB write fails, check whether another session won the race and saved a color for us
         console.error(`Failed to persist color for "${familyName}":`, e);
         try {
             const retry = await apiFetch('family_colors');
@@ -226,9 +202,8 @@ async function _doAssignColor(familyName) {
                 FAMILY_COLORS[familyName] = found.color;
                 return found.color;
             }
-        } catch (_) { /* keep the locally-assigned color and move on */ }
+        } catch (_) {}
     }
-
     return newColor;
 }
 
@@ -377,7 +352,7 @@ function onPersonAutocomplete(name, family, targetFamilyInputId) {
 }
 
 // ==============================================================
-// DATABASE LOOKUP HELPERS
+// DATABASE LOOKUP HELPERS & GENERATION CACHE (SPOUSE-AWARE)
 // ==============================================================
 function findPersonById(id) { return FAMILY_DB.people.find(p => p.id === id) || null; }
 function findPeopleByName(name) {
@@ -419,20 +394,99 @@ function getDescendants(person, visited = new Set()) {
     return r;
 }
 
-function getPersonGenerationLevel(person) {
-    let depth = 0, current = person;
-    const seen = new Set();
-    while (current) {
-        if (seen.has(current.id)) break;
-        seen.add(current.id);
-        const parents = getParentsArray(current);
-        if (!parents.length) break;
-        depth++;
-        current = findPersonById(parents[0]);
+// ---------- SPOUSE INFERENCE & GENERATION CACHE ----------
+let generationCache = new Map();
+
+function buildSpouseMap() {
+    const spouseMap = new Map();
+    for (const p of FAMILY_DB.people) {
+        const parents = getParentsArray(p).filter(pid => pid !== '__na__');
+        if (parents.length >= 2) {
+            const [a, b] = parents;
+            if (!spouseMap.has(a)) spouseMap.set(a, new Set());
+            if (!spouseMap.has(b)) spouseMap.set(b, new Set());
+            spouseMap.get(a).add(b);
+            spouseMap.get(b).add(a);
+        }
     }
-    return depth;
+    return spouseMap;
 }
 
+function computeGenerations() {
+    const spouseMap = buildSpouseMap();
+    const childrenMap = new Map();
+    for (const p of FAMILY_DB.people) {
+        const parents = getParentsArray(p).filter(pid => pid !== '__na__');
+        for (const pid of parents) {
+            if (!childrenMap.has(pid)) childrenMap.set(pid, new Set());
+            childrenMap.get(pid).add(p.id);
+        }
+    }
+
+    const gen = new Map();
+    const queue = [];
+
+    // roots: people with no real parents
+    for (const p of FAMILY_DB.people) {
+        const realParents = getParentsArray(p).filter(pid => pid !== '__na__');
+        if (realParents.length === 0) {
+            gen.set(p.id, 0);
+            queue.push(p.id);
+        }
+    }
+
+    while (queue.length) {
+        const pid = queue.shift();
+        const currentGen = gen.get(pid);
+
+        // children get currentGen + 1
+        const children = childrenMap.get(pid) || new Set();
+        for (const childId of children) {
+            const targetGen = currentGen + 1;
+            if (!gen.has(childId)) {
+                gen.set(childId, targetGen);
+                queue.push(childId);
+            } else if (gen.get(childId) !== targetGen) {
+                const newGen = Math.max(gen.get(childId), targetGen);
+                gen.set(childId, newGen);
+                queue.push(childId);
+            }
+        }
+
+        // spouses must have the same generation
+        const spouses = spouseMap.get(pid) || new Set();
+        for (const spouseId of spouses) {
+            if (!gen.has(spouseId)) {
+                gen.set(spouseId, currentGen);
+                queue.push(spouseId);
+            } else if (gen.get(spouseId) !== currentGen) {
+                const newGen = Math.max(gen.get(spouseId), currentGen);
+                gen.set(spouseId, newGen);
+                queue.push(spouseId);
+            }
+        }
+    }
+
+    // any remaining (shouldn't happen) default to 0
+    for (const p of FAMILY_DB.people) {
+        if (!gen.has(p.id)) gen.set(p.id, 0);
+    }
+    return gen;
+}
+
+function refreshGenerationCache() {
+    generationCache = computeGenerations();
+}
+
+function getPersonGenerationLevel(person) {
+    if (!person) return 0;
+    if (!generationCache.has(person.id)) refreshGenerationCache();
+    return generationCache.get(person.id) || 0;
+}
+
+// ==============================================================
+// MISSING HELPER FUNCTIONS (restored)
+// ==============================================================
 function getParentValue(parent) {
     const inp = document.getElementById(`${parent}Name`);
     if (!inp) return null;
@@ -495,73 +549,69 @@ function findFamilyClusters() {
     return clusters;
 }
 
-// function clusterFamilyName(cluster) {
-//     const roots = cluster.filter(isRootPerson);
-//     const base  = roots.length ? roots[0] : cluster[0];
-//     if (!base?.name) return 'Unknown Family';
-//     const parts = base.name.split(' ');
-//     return parts[parts.length - 1] + ' Family';
-// }
 function clusterFamilyName(cluster) {
-    // Priority 1: root person with a family_name set
     const roots = cluster.filter(isRootPerson);
     for (const r of roots) {
         if (r.family_name) return r.family_name;
     }
-    // Priority 2: any root person exists (fallback to their last name)
     if (roots.length && roots[0]?.name) {
         const parts = roots[0].name.split(' ');
         return parts[parts.length - 1] + ' Family';
     }
-    // Priority 3: scan entire cluster for any member with a family_name
     for (const p of cluster) {
         if (p.family_name) return p.family_name;
     }
-    // Priority 4: last resort
     return 'Unknown Family';
 }
 
 function buildWholeTreeRows(cluster) {
     const clusterIds = new Set(cluster.map(p => p.id));
-    const depthCache = new Map();
-
-    function depth(person) {
-        if (depthCache.has(person.id)) return depthCache.get(person.id);
-        const allParents    = getParentsArray(person);
-        const clusterParents = allParents.filter(pid => clusterIds.has(pid));
-
-        if (!allParents.length) {
-            depthCache.set(person.id, 0); return 0;
+    // Build spouse map for this cluster
+    const spouseMap = new Map();
+    for (const p of cluster) {
+        const parents = getParentsArray(p).filter(pid => clusterIds.has(pid) && pid !== '__na__');
+        if (parents.length >= 2) {
+            const [a, b] = parents;
+            if (!spouseMap.has(a)) spouseMap.set(a, new Set());
+            if (!spouseMap.has(b)) spouseMap.set(b, new Set());
+            spouseMap.get(a).add(b);
+            spouseMap.get(b).add(a);
         }
-        if (!clusterParents.length) {
-            depthCache.set(person.id, 1); return 1;
-        }
-        const parentDepths = clusterParents
-            .map(pid => { const par = findPersonById(pid); return par ? depth(par) : 0; });
-        const d = Math.max(...parentDepths) + 1;
-        depthCache.set(person.id, d); return d;
     }
 
-    cluster.forEach(p => depth(p));
-
     const byDepth = new Map();
-    cluster.forEach(p => {
-        const d = depthCache.get(p.id) ?? 0;
+    for (const p of cluster) {
+        const d = getPersonGenerationLevel(p);
         if (!byDepth.has(d)) byDepth.set(d, []);
         byDepth.get(d).push(p);
-    });
+    }
 
     if (!byDepth.size) return [];
     const maxDepth = Math.max(...byDepth.keys());
     const rows = [];
     for (let d = 0; d <= maxDepth; d++) {
-        const row = byDepth.get(d) || [];
-        row.sort((a, b) => {
-            const ka = getParentsArray(a).sort().join(',');
-            const kb = getParentsArray(b).sort().join(',');
-            return ka !== kb ? ka.localeCompare(kb) : a.name.localeCompare(b.name);
-        });
-        rows.push(row);
+        let row = byDepth.get(d) || [];
+        // pair spouses side‑by‑side
+        const paired = new Set();
+        const sorted = [];
+        for (const person of row) {
+            if (paired.has(person.id)) continue;
+            const spouses = spouseMap.get(person.id);
+            if (spouses && spouses.size) {
+                const spouseInRow = Array.from(spouses).find(sid => row.some(p => p.id === sid));
+                if (spouseInRow && !paired.has(spouseInRow)) {
+                    const spouseObj = row.find(p => p.id === spouseInRow);
+                    sorted.push(person);
+                    sorted.push(spouseObj);
+                    paired.add(person.id);
+                    paired.add(spouseObj.id);
+                    continue;
+                }
+            }
+            sorted.push(person);
+            paired.add(person.id);
+        }
+        rows.push(sorted);
     }
     return rows;
 }
@@ -595,7 +645,6 @@ function renderWholeFamilyTree() {
             html += `<div class="tree-node add-gen-btn"
                           onclick="showWholeTreeAddModal(${genNum},'${rowIds}',${idx},${idx===0})">＋ Add</div>`;
             html += `</div>`;
-            // if (idx < rows.length - 1) html += `<div class="connector-line">▼</div>`;
         });
         html += `</div>`;
         return html;
@@ -917,9 +966,22 @@ function buildNodeHtml(person, extraClass = '', onClick = null) {
 }
 
 // ==============================================================
-// LINEAGE MODAL
+// LINEAGE MODAL (with spouse pairing)
 // ==============================================================
 function buildLineageHtml(person) {
+    // Build spouse map globally
+    const spouseMap = new Map();
+    for (const p of FAMILY_DB.people) {
+        const parents = getParentsArray(p).filter(pid => pid !== '__na__');
+        if (parents.length >= 2) {
+            const [a, b] = parents;
+            if (!spouseMap.has(a)) spouseMap.set(a, new Set());
+            if (!spouseMap.has(b)) spouseMap.set(b, new Set());
+            spouseMap.get(a).add(b);
+            spouseMap.get(b).add(a);
+        }
+    }
+
     const ancestorsRaw = getAncestors(person);
     const uniqAncestors = [];
     const seenA = new Set();
@@ -962,18 +1024,38 @@ function buildLineageHtml(person) {
     }
     const dDepths = Array.from(dGroups.keys()).sort((a,b) => a-b);
 
+    function renderNodeGroup(nodes, focusId = null) {
+        const paired = new Set();
+        const items = [];
+        for (const m of nodes) {
+            if (paired.has(m.id)) continue;
+            const spouses = spouseMap.get(m.id);
+            if (spouses && spouses.size) {
+                const spouseInGroup = nodes.find(n => spouses.has(n.id) && !paired.has(n.id));
+                if (spouseInGroup) {
+                    items.push(`<div style="display:inline-flex;gap:0.5rem;align-items:center;">${buildNodeHtml(m, m.id === focusId ? 'focused-node' : '')}${buildNodeHtml(spouseInGroup, '')}</div>`);
+                    paired.add(m.id);
+                    paired.add(spouseInGroup.id);
+                    continue;
+                }
+            }
+            items.push(buildNodeHtml(m, m.id === focusId ? 'focused-node' : ''));
+            paired.add(m.id);
+        }
+        return items.join('');
+    }
+
     const totalAncGen = aDepths.length;
     let html = `<div class="lineage-chain">`;
 
     aDepths.forEach((depth, idx) => {
-        const level  = aGroups.get(depth);
+        const level = aGroups.get(depth);
         const genNum = totalAncGen - idx;
-        const label  = depth === 0 ? `📍 ${escapeHtml(person.name)}` : idx === 0 ? `👴👵 Oldest Ancestors — Gen ${genNum}` : `📍 Generation ${genNum}`;
+        const label = depth === 0 ? `📍 ${escapeHtml(person.name)}` : idx === 0 ? `👴👵 Oldest Ancestors — Gen ${genNum}` : `📍 Generation ${genNum}`;
         html += `<div class="lineage-gen-block">
                     <div class="lineage-gen-label">${label}</div>
-                    <div class="lineage-nodes-row">`;
-        for (const m of level) html += buildNodeHtml(m, m.id === person.id ? 'focused-node' : '');
-        html += `</div></div>`;
+                    <div class="lineage-nodes-row">${renderNodeGroup(level, person.id)}</div>
+                </div>`;
         if (idx < aDepths.length - 1) html += `<div class="lineage-connector">▼</div>`;
     });
 
@@ -983,9 +1065,8 @@ function buildLineageHtml(person) {
             const label = depth === 1 ? '👶 Children' : depth === 2 ? '📍 Grandchildren' : depth === 3 ? '📍 Great-Grandchildren' : `📍 Generation +${depth}`;
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
-                        <div class="lineage-nodes-row">`;
-            for (const m of dGroups.get(depth)) html += buildNodeHtml(m);
-            html += `</div></div>`;
+                        <div class="lineage-nodes-row">${renderNodeGroup(dGroups.get(depth))}</div>
+                    </div>`;
             if (idx < dDepths.length - 1) html += `<div class="lineage-connector">▼</div>`;
         });
     }
@@ -1112,7 +1193,6 @@ async function addOrGetPerson(nameOrRef, gender = 'unknown', familyName = null) 
     const existingId = isRef ? nameOrRef.id : null;
     if (existingId) return findPersonById(existingId);
     
-    // CRITICAL: Assign a color for the family name BEFORE creating the person
     if (familyName) {
         await assignColorForFamily(familyName);
     }
@@ -1153,7 +1233,6 @@ async function contributeToTree(event) {
     showSuccess('contributeSuccessMsg', 'Adding to the family tree…');
 
     try {
-        // Assign colors for ALL family names that appear
         await assignColorForFamily(familyName);
         if (fatherFamilyName) await assignColorForFamily(fatherFamilyName);
         if (motherFamilyName) await assignColorForFamily(motherFamilyName);
