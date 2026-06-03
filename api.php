@@ -15,6 +15,9 @@ $host = 'localhost';
 $db   = 'fam';          // change to your database name
 $user = 'root';         // XAMPP default
 $pass = '';             // XAMPP default (empty)
+// $db   = 'udingin1_fam';
+// $user = 'udingin1_famo';
+// $pass = 'dT_Jr]0NBfCK';
 $charset = 'utf8mb4';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";

@@ -777,19 +777,29 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
                 </div>
             </div>`;
     } else if (placement === 'within') {
-        section.innerHTML = `
-            <div class="form-group" style="margin-top:0.75rem;">
-                <label>Inherit parents from sibling <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
-                <select id="wtSiblingRef" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
-                    <option value="">-- Auto-inherit from first sibling with parents --</option>${rowOpts}
-                </select>
-                <select id="wtParent1" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
-                    <option value="">-- Specify Parent 1 (optional) --</option>${allOpts}
-                </select>
-                <select id="wtParent2" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                    <option value="">-- Specify Parent 2 (optional) --</option>${allOpts}
-                </select>
-            </div>
+            const allNameOpts = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name))
+                .map(p => `<option value="${escapeHtml(p.name)}">`).join('');
+            section.innerHTML = `
+                <div class="form-group" style="margin-top:0.75rem;">
+                    <label>Inherit parents from sibling <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <select id="wtSiblingRef" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
+                        <option value="">-- Auto-inherit from first sibling with parents --</option>${rowOpts}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Parent 1 <span style="color:#aaa;font-weight:normal;">(optional — select existing or type new name)</span></label>
+                    <input type="text" id="wtParent1Text" list="wtParent1List"
+                        placeholder="Search or type full name"
+                        style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;margin-bottom:0.4rem;">
+                    <datalist id="wtParent1List">${allNameOpts}</datalist>
+                </div>
+                <div class="form-group">
+                    <label>Parent 2 <span style="color:#aaa;font-weight:normal;">(optional — select existing or type new name)</span></label>
+                    <input type="text" id="wtParent2Text" list="wtParent2List"
+                        placeholder="Search or type full name"
+                        style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;margin-bottom:0.4rem;">
+                    <datalist id="wtParent2List">${allNameOpts}</datalist>
+                </div>
             <div class="form-group">
                 <label>Child(ren) <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
                 <div id="wtChildLink2Wrap"
@@ -882,10 +892,26 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     });
                 }
             }
-        } else if (placement === 'within') {
-            const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
-            const p1 = document.getElementById('wtParent1')?.value || '';
-            const p2 = document.getElementById('wtParent2')?.value || '';
+    } else if (placement === 'within') {
+                const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
+                const p1Text = document.getElementById('wtParent1Text')?.value.trim() || '';
+                const p2Text = document.getElementById('wtParent2Text')?.value.trim() || '';
+
+                const resolveParentText = async (text, gender) => {
+                    if (!text) return null;
+                    const matches = findPeopleByName(text);
+                    if (matches.length >= 1) return matches[0];
+                    const v = validateFullName(text);
+                    if (!v.valid) return null;
+                    const nuid = generateUID(), nid = makePersonId(text, nuid);
+                    await addPersonToDB({ id: nid, uid: nuid, name: text, gender, parents: JSON.stringify([]), is_root: true, family_name: null });
+                    FAMILY_DB.people.push({ id: nid, uid: nuid, name: text, gender, parents: '[]', is_root: true, family_name: null });
+                    return { id: nid };
+                };
+                const parent1Obj = await resolveParentText(p1Text, 'male');
+                const parent2Obj = await resolveParentText(p2Text, 'female');
+                const p1 = parent1Obj?.id || '';
+                const p2 = parent2Obj?.id || '';
             const childLinks = Array.from(
                 document.querySelectorAll('.wt-child-link2:checked') || []
             ).map(o => o.value);
@@ -1114,19 +1140,57 @@ window.handleNodeClick = function(personId) { showLineageModal(personId); };
 function showEditModal(person) {
     if (!person) return;
     document.getElementById('editModal')?.remove();
-    const fnOptions = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort()
-        .map(fn => `<option value="${fn}" ${person.family_name === fn ? 'selected' : ''}>${escapeHtml(fn)}</option>`).join('');
+
+    const existingFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
+    const fnDatalist = existingFamilies.map(fn => `<option value="${escapeHtml(fn)}">`).join('');
+
+    const allPeopleOpts = [...FAMILY_DB.people]
+        .filter(p => p.id !== person.id)
+        .sort((a,b) => a.name.localeCompare(b.name))
+        .map(p => `<option value="${escapeHtml(p.name)}">`).join('');
+
+    // Current parents
+    const currentParents = getParentsArray(person)
+        .filter(pid => pid !== '__na__')
+        .map(pid => findPersonById(pid))
+        .filter(Boolean);
+
+    // Current children
+    const currentChildren = FAMILY_DB.people.filter(p =>
+        getParentsArray(p).includes(person.id)
+    );
+
+    const parentTags = currentParents.map(p =>
+        `<span style="background:#fef3e2;border:1px solid #e2cfb0;border-radius:0.5rem;
+                      padding:0.2rem 0.5rem;font-size:0.75rem;display:inline-flex;align-items:center;gap:0.3rem;">
+            ${escapeHtml(p.name)}
+            <button type="button" onclick="editRemoveParent('${p.id}')"
+                    style="background:none;border:none;cursor:pointer;color:#c33;font-size:0.8rem;line-height:1;">✕</button>
+        </span>`
+    ).join('');
+
+    const childTags = currentChildren.map(p =>
+        `<span style="background:#eaf7ee;border:1px solid #aed6b5;border-radius:0.5rem;
+                      padding:0.2rem 0.5rem;font-size:0.75rem;display:inline-flex;align-items:center;gap:0.3rem;">
+            ${escapeHtml(p.name)}
+            <button type="button" onclick="editRemoveChild('${p.id}')"
+                    style="background:none;border:none;cursor:pointer;color:#c33;font-size:0.8rem;line-height:1;">✕</button>
+        </span>`
+    ).join('');
+
     document.body.insertAdjacentHTML('beforeend', `
         <div id="editModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);
              display:flex;align-items:center;justify-content:center;z-index:11000;">
-            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:400px;
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:460px;
                         width:90%;max-height:90vh;overflow-y:auto;">
                 <h3 style="margin-bottom:1rem;">✏️ Edit ${escapeHtml(person.name)}</h3>
+
                 <div class="form-group">
                     <label>Full Name</label>
                     <input type="text" id="editName" value="${escapeHtml(person.name)}"
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
                 </div>
+
                 <div class="form-group">
                     <label>Gender</label>
                     <select id="editGender" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
@@ -1136,19 +1200,63 @@ function showEditModal(person) {
                         <option value="unknown" ${person.gender==='unknown' ?'selected':''}>Unknown</option>
                     </select>
                 </div>
+
                 <div class="form-group">
                     <label>Date of Birth</label>
                     <input type="date" id="editDob" value="${person.dob||''}"
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
                 </div>
+
                 <div class="form-group">
-                    <label>Family Name</label>
-                    <select id="editFamilyName" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                        <option value="">-- No family assigned --</option>
-                        ${fnOptions}
-                    </select>
+                    <label>Family Name <span style="font-weight:400;color:#888;">(select or type new)</span></label>
+                    <input type="text" id="editFamilyName" list="editFamilyList"
+                           value="${escapeHtml(person.family_name || '')}"
+                           placeholder="Select existing or type new family name"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                    <datalist id="editFamilyList">${fnDatalist}</datalist>
                 </div>
-                <div style="font-size:0.7rem;color:#888;margin-bottom:0.75rem;">ID: <strong>#${person.uid||person.id}</strong></div>
+
+                <div class="form-group">
+                    <label>Parents <span style="font-weight:400;color:#888;">(optional)</span></label>
+                    <div id="editParentTags" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.4rem;min-height:1.5rem;">
+                        ${parentTags || '<span style="font-size:0.75rem;color:#aaa;">No parents set</span>'}
+                    </div>
+                    <div style="display:flex;gap:0.4rem;">
+                        <input type="text" id="editAddParentInput" list="editAddParentList"
+                               placeholder="Type or search parent name"
+                               style="flex:1;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;font-size:0.85rem;">
+                        <datalist id="editAddParentList">${allPeopleOpts}</datalist>
+                        <button type="button" onclick="editAddParent('${person.id}')"
+                                style="background:#5a3e2b;color:white;border:none;border-radius:0.5rem;
+                                       padding:0.5rem 0.8rem;cursor:pointer;font-size:0.8rem;white-space:nowrap;">+ Add</button>
+                    </div>
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                        Select an existing person or type a new name and click Add.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Children <span style="font-weight:400;color:#888;">(optional)</span></label>
+                    <div id="editChildTags" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.4rem;min-height:1.5rem;">
+                        ${childTags || '<span style="font-size:0.75rem;color:#aaa;">No children set</span>'}
+                    </div>
+                    <div style="display:flex;gap:0.4rem;">
+                        <input type="text" id="editAddChildInput" list="editAddChildList"
+                               placeholder="Type or search child name"
+                               style="flex:1;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;font-size:0.85rem;">
+                        <datalist id="editAddChildList">${allPeopleOpts}</datalist>
+                        <button type="button" onclick="editAddChild('${person.id}')"
+                                style="background:#28a745;color:white;border:none;border-radius:0.5rem;
+                                       padding:0.5rem 0.8rem;cursor:pointer;font-size:0.8rem;white-space:nowrap;">+ Add</button>
+                    </div>
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                        Select an existing person or type a new name and click Add.
+                    </div>
+                </div>
+
+                <div style="font-size:0.7rem;color:#888;margin-bottom:0.75rem;">
+                    ID: <strong>#${person.uid||person.id}</strong>
+                </div>
                 <div style="display:flex;gap:0.5rem;margin-top:1rem;">
                     <button onclick="saveEdit('${person.id}')" class="submit-btn" style="flex:1;">Save</button>
                     <button onclick="closeEditModal()"
@@ -1156,27 +1264,147 @@ function showEditModal(person) {
                 </div>
             </div>
         </div>`);
+
     document.getElementById('editDob')?.addEventListener('click', function() { this.showPicker(); });
+
+    // Store working copies of parents/children for this edit session
+    window._editParents  = currentParents.map(p => p.id);
+    window._editChildren = currentChildren.map(p => p.id);
+    window._editPersonId = person.id;
 }
+
+
+window.editRemoveParent = function(parentId) {
+    window._editParents = (window._editParents || []).filter(id => id !== parentId);
+    const p = findPersonById(parentId);
+    const tag = document.querySelector(`#editParentTags button[onclick="editRemoveParent('${parentId}')"]`)?.parentElement;
+    if (tag) tag.remove();
+    const wrap = document.getElementById('editParentTags');
+    if (wrap && !wrap.querySelector('span[style*="background"]')) {
+        wrap.innerHTML = '<span style="font-size:0.75rem;color:#aaa;">No parents set</span>';
+    }
+};
+
+window.editRemoveChild = function(childId) {
+    window._editChildren = (window._editChildren || []).filter(id => id !== childId);
+    const tag = document.querySelector(`#editChildTags button[onclick="editRemoveChild('${childId}')"]`)?.parentElement;
+    if (tag) tag.remove();
+    const wrap = document.getElementById('editChildTags');
+    if (wrap && !wrap.querySelector('span[style*="background"]')) {
+        wrap.innerHTML = '<span style="font-size:0.75rem;color:#aaa;">No children set</span>';
+    }
+};
+
+window.editAddParent = async function(personId) {
+    const input = document.getElementById('editAddParentInput');
+    const name  = input?.value.trim();
+    if (!name) return;
+    let parentObj = findPeopleByName(name)[0] || null;
+    if (!parentObj) {
+        const v = validateFullName(name);
+        if (!v.valid) { alert(v.message); return; }
+        const nuid = generateUID(), nid = makePersonId(name, nuid);
+        await addPersonToDB({ id: nid, uid: nuid, name, gender: 'unknown', parents: JSON.stringify([]), is_root: true, family_name: null });
+        FAMILY_DB.people.push({ id: nid, uid: nuid, name, gender: 'unknown', parents: '[]', is_root: true, family_name: null });
+        parentObj = { id: nid, name };
+    }
+    if ((window._editParents || []).includes(parentObj.id)) { alert('Already added.'); return; }
+    window._editParents = [...(window._editParents || []), parentObj.id];
+    const wrap = document.getElementById('editParentTags');
+    const placeholder = wrap?.querySelector('span[style*="color:#aaa"]');
+    if (placeholder) placeholder.remove();
+    wrap?.insertAdjacentHTML('beforeend',
+        `<span style="background:#fef3e2;border:1px solid #e2cfb0;border-radius:0.5rem;
+                      padding:0.2rem 0.5rem;font-size:0.75rem;display:inline-flex;align-items:center;gap:0.3rem;">
+            ${escapeHtml(parentObj.name)}
+            <button type="button" onclick="editRemoveParent('${parentObj.id}')"
+                    style="background:none;border:none;cursor:pointer;color:#c33;font-size:0.8rem;line-height:1;">✕</button>
+        </span>`);
+    if (input) input.value = '';
+};
+
+window.editAddChild = async function(personId) {
+    const input = document.getElementById('editAddChildInput');
+    const name  = input?.value.trim();
+    if (!name) return;
+    let childObj = findPeopleByName(name)[0] || null;
+    if (!childObj) {
+        const v = validateFullName(name);
+        if (!v.valid) { alert(v.message); return; }
+        const nuid = generateUID(), nid = makePersonId(name, nuid);
+        await addPersonToDB({ id: nid, uid: nuid, name, gender: 'unknown', parents: JSON.stringify([personId]), is_root: false, family_name: null });
+        FAMILY_DB.people.push({ id: nid, uid: nuid, name, gender: 'unknown', parents: JSON.stringify([personId]), is_root: false, family_name: null });
+        childObj = { id: nid, name };
+    }
+    if ((window._editChildren || []).includes(childObj.id)) { alert('Already added.'); return; }
+    window._editChildren = [...(window._editChildren || []), childObj.id];
+    const wrap = document.getElementById('editChildTags');
+    const placeholder = wrap?.querySelector('span[style*="color:#aaa"]');
+    if (placeholder) placeholder.remove();
+    wrap?.insertAdjacentHTML('beforeend',
+        `<span style="background:#eaf7ee;border:1px solid #aed6b5;border-radius:0.5rem;
+                      padding:0.2rem 0.5rem;font-size:0.75rem;display:inline-flex;align-items:center;gap:0.3rem;">
+            ${escapeHtml(childObj.name)}
+            <button type="button" onclick="editRemoveChild('${childObj.id}')"
+                    style="background:none;border:none;cursor:pointer;color:#c33;font-size:0.8rem;line-height:1;">✕</button>
+        </span>`);
+    if (input) input.value = '';
+};
 
 window.saveEdit = async function(personId) {
     const name       = document.getElementById('editName').value.trim();
     const gender     = document.getElementById('editGender').value;
     const dob        = document.getElementById('editDob').value;
     const familyName = document.getElementById('editFamilyName').value.trim();
+
     if (!name) { alert('Name cannot be empty'); return; }
     const v = validateFullName(name);
     if (!v.valid) { alert(v.message); return; }
     if (familyName) await assignColorForFamily(familyName);
+
     const updates = { name, gender };
     if (dob) updates.dob = dob;
-    if (familyName !== undefined) updates.family_name = familyName || null;
+    updates.family_name = familyName || null;
+
+    // Update parents on this person
+    const newParents = (window._editParents || []).filter(id => id !== '__na__');
+    updates.parents  = JSON.stringify(newParents.length ? newParents : []);
+    updates.is_root  = newParents.length === 0;
+
     try {
         await updatePersonInDB(personId, updates);
-        await loadPeople(); await loadFamilyColors();
+
+        // Sync children: ensure this person is in each child's parents array
+        const desiredChildren = new Set(window._editChildren || []);
+        // Children that were removed — strip this person from their parents
+        const oldChildren = FAMILY_DB.people.filter(p => getParentsArray(p).includes(personId));
+        for (const child of oldChildren) {
+            if (!desiredChildren.has(child.id)) {
+                const updatedParents = getParentsArray(child).filter(pid => pid !== personId);
+                await updatePersonInDB(child.id, { parents: JSON.stringify(updatedParents) });
+            }
+        }
+        // Children that were added — add this person to their parents array
+        for (const childId of desiredChildren) {
+            const child = findPersonById(childId);
+            if (!child) continue;
+            const existingParents = getParentsArray(child);
+            if (!existingParents.includes(personId)) {
+                await updatePersonInDB(childId, {
+                    parents: JSON.stringify([...existingParents, personId]),
+                    is_root: false
+                });
+            }
+        }
+
+        await loadPeople();
+        await loadFamilyColors();
         closeEditModal();
+        renderWholeFamilyTree();
         showSuccess('contributeSuccessMsg', 'Updated successfully!');
-    } catch(e) { showError('contributeErrorMsg', `Update failed: ${e.message}`); }
+    } catch(e) {
+        showError('contributeErrorMsg', `Update failed: ${e.message}`);
+    }
 };
 
 window.closeEditModal = function() { document.getElementById('editModal')?.remove(); };
