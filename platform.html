@@ -40,7 +40,19 @@
         /* ── SECTIONS ── */
         .search-section { background:#fef7ed; border-radius:1rem; padding:1rem; margin-bottom:1rem; }
         .contribute-section { background:white; border-radius:1rem; padding:1rem; margin-bottom:1rem; }
-        .lineage-container { background:#fcf8ef; border-radius:1rem; padding:1rem; overflow-x:auto; min-height:300px; }
+
+        /* ── LINEAGE CONTAINER — horizontal scroll on mobile ── */
+        .lineage-container {
+            background:#fcf8ef;
+            border-radius:1rem;
+            padding:1rem;
+            min-height:300px;
+            /* horizontal scroll so tree is never squeezed */
+            overflow-x:auto;
+            overflow-y:visible;
+            -webkit-overflow-scrolling:touch;
+        }
+
         .tree-title { font-size:1.1rem; font-weight:600; color:#4f321b; margin-bottom:0.5rem;
             border-left:4px solid #c2894b; padding-left:0.75rem; }
 
@@ -50,38 +62,14 @@
         .form-group input, .form-group select { width:100%; padding:0.6rem; border:2px solid #e0cfb6;
             border-radius:0.8rem; font-size:0.85rem; background:white; transition:0.2s; }
         .form-group input:focus, .form-group select:focus { border-color:#c2894b; outline:none; }
-        
-        /* side-by-side row utility */
-        .split-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-top: 0.25rem;
-        }
-        .split-row > .field-col {
-            flex: 1;
-            min-width: 160px;
-        }
-        .field-col .mode-indicator {
-            font-size:0.7rem;
-            font-weight: 500;
-            color:#7a5c3a;
-            margin-bottom: 0.25rem;
-        }
-        .field-col input, .field-col select {
-            width: 100%;
-        }
-        .info-note {
-            background:#e8f4f8;
-            padding:0.4rem 0.6rem;
-            border-radius:0.5rem;
-            font-size:0.7rem;
-            margin-top:0.4rem;
-            color:#0c5460;
-        }
-        .compact-info-note {
-            margin-top:0.3rem;
-        }
+
+        .split-row { display:flex; flex-wrap:wrap; gap:1rem; margin-top:0.25rem; }
+        .split-row > .field-col { flex:1; min-width:160px; }
+        .field-col .mode-indicator { font-size:0.7rem; font-weight:500; color:#7a5c3a; margin-bottom:0.25rem; }
+        .field-col input, .field-col select { width:100%; }
+        .info-note { background:#e8f4f8; padding:0.4rem 0.6rem; border-radius:0.5rem;
+            font-size:0.7rem; margin-top:0.4rem; color:#0c5460; }
+        .compact-info-note { margin-top:0.3rem; }
 
         .search-form { display:flex; flex-direction:column; gap:0.75rem; }
         .search-form label { display:block; font-weight:600; color:#5e3c22; margin-bottom:0.3rem; font-size:0.85rem; }
@@ -101,7 +89,6 @@
         .delete-btn { background:#dc3545; color:white; padding:0.3rem 0.6rem; border:none;
             border-radius:0.5rem; cursor:pointer; font-size:0.7rem; }
 
-        /* ── PARENT SELECTOR (hidden, not used) ── */
         .parent-selector { display:flex; flex-direction:column; gap:0.5rem; }
 
         /* ── MESSAGES ── */
@@ -109,28 +96,69 @@
         .success-msg.show { display:block; background:#d4edda; color:#155724; }
         .error-msg.show   { display:block; background:#f8d7da; color:#721c24; }
 
-        /* ── TREE NODES ── */
-        .tree-node { text-align:center; background:linear-gradient(145deg,#fff6e8,#ffefdd);
-            border-radius:0.75rem; padding:0.5rem 0.8rem; margin:0.4rem;
-            box-shadow:0 2px 6px rgba(0,0,0,0.08); border:1px solid #e7cfb0;
-            font-weight:500; color:#4a2f1a; min-width:100px; font-size:0.8rem;
-            transition:all 0.3s ease; cursor:pointer; word-break:break-word; }
+        /* ── TREE NODES — base (tablet/desktop) ── */
+        .tree-node {
+            text-align:center;
+            background:linear-gradient(145deg,#fff6e8,#ffefdd);
+            border-radius:0.75rem;
+            padding:0.5rem 0.8rem;
+            margin:0.4rem;
+            box-shadow:0 2px 6px rgba(0,0,0,0.08);
+            border:1px solid #e7cfb0;
+            font-weight:500;
+            color:#4a2f1a;
+            min-width:100px;
+            font-size:0.8rem;
+            transition:all 0.3s ease;
+            cursor:pointer;
+            word-break:break-word;
+            /* prevent shrinking below min-width on mobile */
+            flex-shrink: 0;
+        }
         .tree-node:hover { transform:translateY(-3px) scale(1.02); box-shadow:0 6px 16px rgba(0,0,0,0.13); }
         .tree-node.focused-node { box-shadow:0 4px 18px rgba(0,0,0,0.25); transform:scale(1.04); }
         .add-gen-btn { background:linear-gradient(145deg,#eaf7ee,#d4edda) !important;
             border-color:#aed6b5 !important; color:#2d6a4f !important; font-size:0.75rem; }
 
         /* ── GENERATIONS TREE ── */
-        .generations-tree { display:flex; flex-direction:column; align-items:center; }
-        .gen-label { font-size:0.7rem; text-transform:uppercase; font-weight:bold; color:#b08052;
-            text-align:center; width:100%; margin-top:0.75rem; letter-spacing:1px; }
-        .generation { display:flex; flex-wrap:wrap; justify-content:center; gap:0.75rem; margin:0.75rem 0; }
+        .generations-tree {
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            /* min-width forces the tree to be as wide as it needs to be;
+               the parent .lineage-container scrolls horizontally */
+            min-width: min-content;
+        }
+        .gen-label {
+            font-size:0.7rem;
+            text-transform:uppercase;
+            font-weight:bold;
+            color:#b08052;
+            text-align:center;
+            width:100%;
+            margin-top:0.75rem;
+            letter-spacing:1px;
+            /* ensure label never forces wrap on narrow screens */
+            white-space: nowrap;
+        }
+        .generation {
+            display:flex;
+            /* nowrap is the key change: nodes never stack/squeeze,
+               the container scrolls instead */
+            flex-wrap: nowrap;
+            justify-content:center;
+            gap:0.75rem;
+            margin:0.75rem 0;
+            /* add horizontal padding so connector lines aren't clipped */
+            padding: 0 0.5rem;
+        }
         .connector-line { text-align:center; font-size:1.2rem; color:#c2a075; }
-        .lineage-chain { display:flex; flex-direction:column; align-items:center; gap:0; }
+        .lineage-chain { display:flex; flex-direction:column; align-items:center; gap:0;
+            min-width: min-content; }
         .lineage-gen-block { display:flex; flex-direction:column; align-items:center; width:100%; }
         .lineage-gen-label { font-size:0.68rem; text-transform:uppercase; font-weight:bold;
-            color:#b08052; letter-spacing:1px; margin:0.6rem 0 0.3rem; }
-        .lineage-nodes-row { display:flex; flex-wrap:wrap; justify-content:center; gap:0.5rem; }
+            color:#b08052; letter-spacing:1px; margin:0.6rem 0 0.3rem; white-space:nowrap; }
+        .lineage-nodes-row { display:flex; flex-wrap:nowrap; justify-content:center; gap:0.5rem; }
         .lineage-connector { font-size:1.4rem; color:#c2a075; line-height:1; margin:0.1rem 0; }
 
         /* ── ADMIN ── */
@@ -149,40 +177,73 @@
         .name-item div small { font-size:0.65rem; }
 
         /* ── CUSTOM AUTOCOMPLETE DROPDOWN ── */
-        .autocomplete-wrapper {
-            position: relative;
-            width: 100%;
-        }
-        .autocomplete-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border: 1px solid #e0cfb6;
-            border-radius: 0.5rem;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 1000;
-            display: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .autocomplete-dropdown.show {
-            display: block;
-        }
-        .autocomplete-item {
-            padding: 0.5rem 0.8rem;
-            cursor: pointer;
-            font-size: 0.85rem;
-            border-bottom: 1px solid #f0e4d0;
-        }
-        .autocomplete-item:hover,
-        .autocomplete-item.selected {
-            background: #fcf3e4;
+        .autocomplete-wrapper { position:relative; width:100%; }
+        .autocomplete-dropdown { position:absolute; top:100%; left:0; right:0; background:white;
+            border:1px solid #e0cfb6; border-radius:0.5rem; max-height:200px; overflow-y:auto;
+            z-index:1000; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+        .autocomplete-dropdown.show { display:block; }
+        .autocomplete-item { padding:0.5rem 0.8rem; cursor:pointer; font-size:0.85rem;
+            border-bottom:1px solid #f0e4d0; }
+        .autocomplete-item:hover, .autocomplete-item.selected { background:#fcf3e4; }
+
+        /* ── MOBILE — phones ── */
+        @media (max-width: 480px) {
+            body { padding: 0.4rem; }
+
+            .tab-content { padding: 0.6rem; }
+
+            /* Smaller, fixed-width nodes so many can coexist side by side */
+            .tree-node {
+                min-width: 70px;
+                max-width: 90px;
+                font-size: 0.65rem;
+                padding: 0.3rem 0.4rem;
+                margin: 0.2rem;
+                border-radius: 0.5rem;
+            }
+            .add-gen-btn {
+                min-width: 50px !important;
+                font-size: 0.6rem !important;
+                padding: 0.3rem 0.3rem !important;
+            }
+
+            .gen-label {
+                font-size: 0.58rem;
+                margin-top: 0.5rem;
+                letter-spacing: 0.5px;
+            }
+            .generation {
+                gap: 0.35rem;
+                margin: 0.5rem 0;
+                padding: 0 0.25rem;
+            }
+            .lineage-nodes-row { gap: 0.3rem; }
+            .lineage-gen-label { font-size: 0.58rem; }
+
+            /* Hint bar under tree container on mobile */
+            .lineage-container::after {
+                content: '← scroll →';
+                display: block;
+                text-align: center;
+                font-size: 0.6rem;
+                color: #b08052;
+                padding-top: 0.4rem;
+                opacity: 0.7;
+            }
         }
 
-        /* ── RESPONSIVE ── */
-        @media (min-width:600px) {
+        /* ── SMALL TABLET (481–599px) ── */
+        @media (min-width: 481px) and (max-width: 599px) {
+            .tree-node {
+                min-width: 85px;
+                font-size: 0.72rem;
+                padding: 0.4rem 0.6rem;
+            }
+            .generation { gap: 0.5rem; }
+        }
+
+        /* ── TABLET / DESKTOP ── */
+        @media (min-width: 600px) {
             body { padding:1rem; }
             .main-header { padding:1rem 1.5rem; flex-direction:row; justify-content:space-between; align-items:center; }
             .logo h1 { font-size:1.5rem; text-align:left; }
@@ -197,18 +258,34 @@
             .btn { width:auto; }
             .names-grid { grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); }
         }
-        @media (min-width:768px) {
+
+        @media (min-width: 768px) {
             .tree-node { padding:0.6rem 1.2rem; min-width:140px; font-size:0.9rem; }
             .generation { gap:1.5rem; }
         }
-        @media (max-width:550px) {
-            .split-row { flex-direction: column; gap:0.75rem; }
-            .split-row > .field-col { min-width: auto; }
+
+        @media (max-width: 550px) {
+            .split-row { flex-direction:column; gap:0.75rem; }
+            .split-row > .field-col { min-width:auto; }
         }
+
         .loading { text-align:center; padding:1.5rem; }
         .spinner { border:3px solid #f3f3f3; border-top:3px solid #c2894b; border-radius:50%;
             width:30px; height:30px; animation:spin 1s linear infinite; margin:0 auto; }
         @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+        /* ── SCROLL HINT for tree containers ── */
+        .tree-scroll-hint {
+            display: none;
+            text-align: center;
+            font-size: 0.65rem;
+            color: #b08052;
+            padding: 0.25rem 0;
+            opacity: 0.8;
+        }
+        @media (max-width: 599px) {
+            .tree-scroll-hint { display: block; }
+        }
     </style>
 </head>
 <body>
@@ -235,7 +312,7 @@
         <button class="tab-btn"        data-tab="admin" id="adminTabBtn" style="display:none;">👑 Admin Panel</button>
     </div>
 
-    <!-- TAB 1 — ADD YOUR DETAILS (with side-by-side layout for name + family, father & mother) -->
+    <!-- TAB 1 — ADD YOUR DETAILS -->
     <div id="contributeTab" class="tab-content active">
         <div class="contribute-section">
             <h3 style="font-size:1.1rem;margin-bottom:0.4rem;">🌱 Add Yourself to the Family Tree</h3>
@@ -244,7 +321,6 @@
             </p>
 
             <form id="contributeForm">
-                <!-- ROW: Your Full Name + Your Family Name (side by side) -->
                 <div class="form-group">
                     <div class="split-row">
                         <div class="field-col">
@@ -262,7 +338,6 @@
                     </div>
                 </div>
 
-                <!-- Gender + DOB row (already side-by-side) -->
                 <div class="form-group">
                     <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
                         <div style="flex:1;min-width:120px;">
@@ -280,7 +355,6 @@
                     </div>
                 </div>
 
-                <!-- FATHER'S DETAILS: Father's Name (custom autocomplete) + Father's Family -->
                 <div class="form-group">
                     <label>👨 Father's Details</label>
                     <div class="split-row">
@@ -298,10 +372,8 @@
                                    placeholder="Father's family name" style="width:100%;">
                         </div>
                     </div>
-                    <!-- <div class="info-note" style="margin-top:0.5rem;">First and last name · father's family name separately</div> -->
                 </div>
 
-                <!-- MOTHER'S DETAILS: Mother's Name (custom autocomplete) + Mother's Family -->
                 <div class="form-group">
                     <label>👩 Mother's Details</label>
                     <div class="split-row">
@@ -319,10 +391,8 @@
                                    placeholder="Mother's family name" style="width:100%;">
                         </div>
                     </div>
-                    <!-- <div class="info-note" style="margin-top:0.5rem;">First and last name · mother's family name separately</div> -->
                 </div>
 
-                <!-- datalist for families (only used for family name suggestions) -->
                 <datalist id="dl-families"></datalist>
 
                 <button type="submit" class="submit-btn">🌳 Add to Family Tree</button>
@@ -359,6 +429,7 @@
         <div class="lineage-container">
             <div class="tree-title" id="lineageTitle">🔍 Lineage View</div>
             <div id="lineageLegend"></div>
+            <p class="tree-scroll-hint">⟵ swipe to scroll ⟶</p>
             <div id="lineageContainer">
                 <div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
                     🌱 Enter a name above to see their full lineage — ancestors above, descendants below.
@@ -384,6 +455,7 @@
         <div class="lineage-container">
             <div class="tree-title" id="wholeTreeTitle">🌳 Family Tree</div>
             <div id="wholeTreeLegend"></div>
+            <p class="tree-scroll-hint">⟵ swipe to scroll ⟶</p>
             <div id="wholeTreeContainer">
                 <div class="loading">
                     <div class="spinner"></div>
@@ -425,7 +497,6 @@
             padding:5px 10px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.2);"></div>
 
 <script>
-    // Google Translate initialization (stub)
     function googleTranslateElementInit() {
         if(window.google && window.google.translate) {
             new google.translate.TranslateElement({pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
@@ -437,8 +508,6 @@
 </script>
 <script src="goog_script.js"></script>
 <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
-
-<!-- Main application logic (plat.js) -->
 <script src="plat.js"></script>
 <script src="connector_patch.js"></script>
 </body>
