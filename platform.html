@@ -97,22 +97,11 @@
         .error-msg.show   { display:block; background:#f8d7da; color:#721c24; }
 
         /* ── TREE NODES — base (tablet/desktop) ── */
-        .tree-node {
-            text-align:center;
-            background:linear-gradient(145deg,#fff6e8,#ffefdd);
-            border-radius:0.75rem;
-            padding:0.5rem 0.8rem;
-            margin:0.4rem;
-            box-shadow:0 2px 6px rgba(0,0,0,0.08);
-            border:1px solid #e7cfb0;
-            font-weight:500;
-            color:#4a2f1a;
-            min-width:100px;
-            font-size:0.8rem;
-            transition:all 0.3s ease;
-            cursor:pointer;
-            word-break:break-word;
-            /* prevent shrinking below min-width on mobile */
+        .tree-node { text-align:center; background:linear-gradient(145deg,#fff6e8,#ffefdd);
+            border-radius:0.5rem; padding:0.3rem 0.5rem; margin:0.25rem;
+            box-shadow:0 1px 4px rgba(0,0,0,0.08); border:1px solid #e7cfb0;
+            font-weight:500; color:#4a2f1a; min-width:75px; font-size:0.7rem;
+            transition:all 0.3s ease; cursor:pointer; word-break:break-word;
             flex-shrink: 0;
         }
         .tree-node:hover { transform:translateY(-3px) scale(1.02); box-shadow:0 6px 16px rgba(0,0,0,0.13); }
@@ -129,36 +118,20 @@
                the parent .lineage-container scrolls horizontally */
             min-width: min-content;
         }
-        .gen-label {
-            font-size:0.7rem;
-            text-transform:uppercase;
-            font-weight:bold;
-            color:#b08052;
-            text-align:center;
-            width:100%;
-            margin-top:0.75rem;
-            letter-spacing:1px;
-            /* ensure label never forces wrap on narrow screens */
+        .gen-label { font-size:0.6rem; text-transform:uppercase; font-weight:bold; color:#b08052;
+            text-align:center; width:100%; margin-top:0.5rem; letter-spacing:0.8px;
             white-space: nowrap;
         }
-        .generation {
-            display:flex;
-            /* nowrap is the key change: nodes never stack/squeeze,
-               the container scrolls instead */
-            flex-wrap: nowrap;
-            justify-content:center;
-            gap:0.75rem;
-            margin:0.75rem 0;
-            /* add horizontal padding so connector lines aren't clipped */
-            padding: 0 0.5rem;
+        .generation { display:flex; flex-wrap:nowrap; justify-content:center; gap:0.4rem; margin:0.4rem 0;
+            padding: 0 0.25rem;
         }
         .connector-line { text-align:center; font-size:1.2rem; color:#c2a075; }
         .lineage-chain { display:flex; flex-direction:column; align-items:center; gap:0;
             min-width: min-content; }
         .lineage-gen-block { display:flex; flex-direction:column; align-items:center; width:100%; }
-        .lineage-gen-label { font-size:0.68rem; text-transform:uppercase; font-weight:bold;
-            color:#b08052; letter-spacing:1px; margin:0.6rem 0 0.3rem; white-space:nowrap; }
-        .lineage-nodes-row { display:flex; flex-wrap:nowrap; justify-content:center; gap:0.5rem; }
+        .lineage-gen-label { font-size:0.58rem; text-transform:uppercase; font-weight:bold;
+            color:#b08052; letter-spacing:0.8px; margin:0.35rem 0 0.2rem; white-space:nowrap; }
+        .lineage-nodes-row { display:flex; flex-wrap:nowrap; justify-content:center; gap:0.3rem; }
         .lineage-connector { font-size:1.4rem; color:#c2a075; line-height:1; margin:0.1rem 0; }
 
         /* ── ADMIN ── */
@@ -260,8 +233,8 @@
         }
 
         @media (min-width: 768px) {
-            .tree-node { padding:0.6rem 1.2rem; min-width:140px; font-size:0.9rem; }
-            .generation { gap:1.5rem; }
+            .tree-node { padding:0.35rem 0.7rem; min-width:90px; font-size:0.75rem; }
+            .generation { gap:0.6rem; }
         }
 
         @media (max-width: 550px) {

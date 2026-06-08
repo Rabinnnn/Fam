@@ -550,17 +550,36 @@ function findFamilyClusters() {
 }
 
 function clusterFamilyName(cluster) {
-    const roots = cluster.filter(isRootPerson);
-    for (const r of roots) {
-        if (r.family_name) return r.family_name;
-    }
-    if (roots.length && roots[0]?.name) {
-        const parts = roots[0].name.split(' ');
-        return parts[parts.length - 1] + ' Family';
-    }
-    for (const p of cluster) {
-        if (p.family_name) return p.family_name;
-    }
+    // Only consider people at generation 0 (true root ancestors)
+    const gen0 = cluster.filter(p => getPersonGenerationLevel(p) === 0);
+
+    // Among gen-0 members, pick the one with the most descendants —
+    // that is the founding ancestor the tree was built around.
+    // Tie-break by earliest position in FAMILY_DB.people (insertion order).
+    const scored = gen0
+        .filter(p => p.family_name)
+        .map(p => ({
+            p,
+            score: getDescendants(p).length,
+            dbIndex: FAMILY_DB.people.findIndex(x => x.id === p.id)
+        }))
+        .sort((a, b) => b.score - a.score || a.dbIndex - b.dbIndex);
+
+    if (scored.length) return scored[0].p.family_name;
+
+    // Fallback: any gen-0 person regardless of family_name
+    const gen0sorted = gen0.sort((a, b) =>
+        FAMILY_DB.people.findIndex(x => x.id === a.id) -
+        FAMILY_DB.people.findIndex(x => x.id === b.id)
+    );
+    if (gen0sorted.length && gen0sorted[0].family_name) return gen0sorted[0].family_name;
+
+    // Fallback: any root person with a family_name
+    const roots = cluster.filter(isRootPerson).filter(p => p.family_name);
+    if (roots.length) return roots[0].family_name;
+
+    // Last resort
+    for (const p of cluster) { if (p.family_name) return p.family_name; }
     return 'Unknown Family';
 }
 
