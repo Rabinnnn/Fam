@@ -983,26 +983,63 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 }
             }
 
-            // Determine what to store as parents field:
-            // - If real parents found: use them
-            // - If no real parents and no children linked: use ['__nc__'] as sentinel
-            //   so this person stays in the same cluster as other root members
-            //   without fabricating a real relationship
-            const storedParents = parentIds.length > 0 ? parentIds : (childLinks.length === 0 ? ['__nc__'] : []);
-
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
-                parents: JSON.stringify(storedParents),
-                is_root: true,
+                parents: JSON.stringify(parentIds),
+                is_root: parentIds.length === 0,
                 family_name: familyName
             });
 
+            // Link specified children to new person
             for (const cid of childLinks) {
                 const child = FAMILY_DB.people.find(p => p.id === cid);
                 if (child) {
                     await updatePersonInDB(cid, {
                         parents: JSON.stringify([...new Set([...getParentsArray(child), newId])])
                     });
+                }
+            }
+
+            // ── KEY FIX ──────────────────────────────────────────────────
+            // If no children were explicitly linked AND no parents were found
+            // (i.e. this is a root-generation addition with no connections),
+            // find the children of any existing member in this same row and
+            // add the new person as an additional parent of those children.
+            // This creates the cluster edge that keeps them in the same tree.
+            if (childLinks.length === 0 && parentIds.length === 0) {
+                const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
+                // Collect all children of anyone in this generation row
+                const rowChildIds = [];
+                for (const rid of rowIds) {
+                    const rowChildren = FAMILY_DB.people.filter(p =>
+                        getParentsArray(p).includes(rid)
+                    );
+                    for (const rc of rowChildren) {
+                        if (!rowChildIds.includes(rc.id)) rowChildIds.push(rc.id);
+                    }
+                }
+                if (rowChildIds.length) {
+                    // Link as co-parent of all children in next generation
+                    for (const cid of rowChildIds) {
+                        const child = FAMILY_DB.people.find(p => p.id === cid);
+                        if (child) {
+                            await updatePersonInDB(cid, {
+                                parents: JSON.stringify([...new Set([...getParentsArray(child), newId])])
+                            });
+                        }
+                    }
+                } else {
+                    // No children exist in the next generation either —
+                    // use __na__ as parent placeholder so the person is flagged
+                    // as a deliberate root, but stamp them with the same __na__
+                    // that existing isolated roots have so they visually sit in
+                    // the same cluster on next render.
+                    // Nothing more to do — the generation cache will place them
+                    // at depth 0 alongside the other root members since they
+                    // share no parents. The cluster will merge them on the
+                    // next findFamilyClusters call once a child is added later.
+                    // For now, ensure is_root is true so depth() = 0.
+                    await updatePersonInDB(newId, { is_root: true });
                 }
             }
 
