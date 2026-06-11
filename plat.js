@@ -134,6 +134,9 @@ async function updatePersonInDB(personId, updates) {
 }
 
 async function deletePersonFromDB(personId) {
+    // First remove this person from all other people's parent lists
+    await removePersonFromAllRelations(personId);
+    // Then delete the person itself
     await apiFetch(`people?id=${encodeURIComponent(personId)}`, { method: 'DELETE' });
     delete personOwners[personId];
     savePersonOwners();
@@ -368,6 +371,28 @@ function findAllByPartialName(term) {
 }
 function canEditPerson(id) { return isAdmin || personOwners[id] === currentUser; }
 function isRootPerson(p) { return p.is_root === true || p.is_root === 'true'; }
+// Remove a person from all other people's parents arrays, and fix root status
+async function removePersonFromAllRelations(personId) {
+    const peopleToUpdate = FAMILY_DB.people.filter(p => {
+        const parents = getRawParentsArray(p);
+        return parents.includes(personId);
+    });
+    for (const p of peopleToUpdate) {
+        let newParents = getRawParentsArray(p).filter(pid => pid !== personId);
+        // Clean out any sentinel that might have been left alone (optional)
+        if (newParents.length === 0) {
+            // Person becomes a root
+            await updatePersonInDB(p.id, {
+                parents: JSON.stringify([]),
+                is_root: true
+            });
+        } else {
+            await updatePersonInDB(p.id, {
+                parents: JSON.stringify(newParents)
+            });
+        }
+    }
+}
 
 // Returns real parents only — strips ALL sentinel values
 function getParentsArray(person) {
@@ -817,22 +842,31 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
     const aboveNote = window._wtAboveNote || '';
     if (!placement) { section.innerHTML = ''; return; }
     if (placement === 'above') {
-        const aboveCheckboxes = (window._wtRowIds || [])
-            .map(id => { const p = FAMILY_DB.people.find(x => x.id === id); return p ? buildCheckboxRow(p, 'wt-above-child') : ''; })
-            .join('');
-        section.innerHTML = `${aboveNote}
-            <div class="form-group" style="margin-top:0.75rem;">
-                <label>Their child(ren) from Generation ${genNum} *</label>
-                <div id="wtAboveChildrenWrap"
-                     style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
-                            max-height:160px;overflow-y:auto;background:white;">
-                    ${aboveCheckboxes || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
-                </div>
-                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
-                    Tick the members who are children of the new person.
-                    Unticked members stay as roots and are unaffected.
-                </div>
-            </div>`;
+        // For the root generation (isOldest === true), show a clear message that ALL existing roots will become children
+        if (isOldest) {
+            section.innerHTML = `${aboveNote}
+                <div class="form-group" style="margin-top:0.75rem; background:#e9f5ff; padding:0.6rem; border-radius:0.5rem;">
+                    <strong>📌 This will make the new person the new root ancestor.</strong><br>
+                    All existing members of the oldest generation (${genNum}) will automatically become children of the new person.
+                </div>`;
+        } else {
+            const aboveCheckboxes = (window._wtRowIds || [])
+                .map(id => { const p = FAMILY_DB.people.find(x => x.id === id); return p ? buildCheckboxRow(p, 'wt-above-child') : ''; })
+                .join('');
+            section.innerHTML = `${aboveNote}
+                <div class="form-group" style="margin-top:0.75rem;">
+                    <label>Their child(ren) from Generation ${genNum} *</label>
+                    <div id="wtAboveChildrenWrap"
+                         style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
+                                max-height:160px;overflow-y:auto;background:white;">
+                        ${aboveCheckboxes || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
+                    </div>
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                        Tick the members who are children of the new person.
+                        Unticked members stay as roots and are unaffected.
+                    </div>
+                </div>`;
+        }
     } else if (placement === 'within') {
         const allNameOpts = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name))
             .map(p => `<option value="${escapeHtml(p.name)}">`).join('');
@@ -908,37 +942,63 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
 
     try {
         if (placement === 'above') {
-            const selectedChildren = Array.from(
-                document.querySelectorAll('.wt-above-child:checked') || []
-            ).map(o => o.value).filter(Boolean);
-            if (!selectedChildren.length)
-                return showErr('Please select at least one child from the generation below.');
+            if (isOldest) {
+                // FIX: When adding above the root generation, make ALL previous roots become children of the new person
+                const allRootIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
+                if (allRootIds.length === 0) {
+                    return showErr('No root members found to attach above.');
+                }
 
-            const selectedMembers = selectedChildren
-                .map(id => FAMILY_DB.people.find(p => p.id === id))
-                .filter(Boolean);
+                await addPersonToDB({
+                    id: newId, uid, name, gender, dob: dob||null,
+                    parents: JSON.stringify([]),
+                    is_root: true,
+                    family_name: familyName
+                });
 
-            await addPersonToDB({
-                id: newId, uid, name, gender, dob: dob||null,
-                parents: JSON.stringify([]),
-                is_root: true,
-                family_name: familyName
-            });
+                for (const rootId of allRootIds) {
+                    const rootPerson = FAMILY_DB.people.find(p => p.id === rootId);
+                    if (!rootPerson) continue;
+                    const updatedParents = [...new Set([...getParentsArray(rootPerson), newId])];
+                    await updatePersonInDB(rootId, {
+                        parents: JSON.stringify(updatedParents),
+                        is_root: false
+                    });
+                }
+            } else {
+                // Original behaviour for non-root generations: selected children only
+                const selectedChildren = Array.from(
+                    document.querySelectorAll('.wt-above-child:checked') || []
+                ).map(o => o.value).filter(Boolean);
+                if (!selectedChildren.length)
+                    return showErr('Please select at least one child from the generation below.');
 
-            for (const member of selectedMembers) {
-                const updatedParents = [...new Set([...getParentsArray(member), newId])];
-                await updatePersonInDB(member.id, { parents: JSON.stringify(updatedParents), is_root: false });
-            }
+                const selectedMembers = selectedChildren
+                    .map(id => FAMILY_DB.people.find(p => p.id === id))
+                    .filter(Boolean);
 
-            const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
-            const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
-            for (const uid2 of unselected) {
-                const member = FAMILY_DB.people.find(p => p.id === uid2);
-                if (!member) continue;
-                const existingParents = getParentsArray(member);
-                const hasRealParent = existingParents.some(pid => FAMILY_DB.people.find(p => p.id === pid));
-                if (!hasRealParent) {
-                    await updatePersonInDB(uid2, { parents: JSON.stringify(['__na__']), is_root: false });
+                await addPersonToDB({
+                    id: newId, uid, name, gender, dob: dob||null,
+                    parents: JSON.stringify([]),
+                    is_root: true,
+                    family_name: familyName
+                });
+
+                for (const member of selectedMembers) {
+                    const updatedParents = [...new Set([...getParentsArray(member), newId])];
+                    await updatePersonInDB(member.id, { parents: JSON.stringify(updatedParents), is_root: false });
+                }
+
+                const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
+                const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
+                for (const uid2 of unselected) {
+                    const member = FAMILY_DB.people.find(p => p.id === uid2);
+                    if (!member) continue;
+                    const existingParents = getParentsArray(member);
+                    const hasRealParent = existingParents.some(pid => FAMILY_DB.people.find(p => p.id === pid));
+                    if (!hasRealParent) {
+                        await updatePersonInDB(uid2, { parents: JSON.stringify(['__na__']), is_root: false });
+                    }
                 }
             }
 
@@ -1766,10 +1826,17 @@ window.deleteSelectedHandler = async function() {
     const checked = Array.from(document.querySelectorAll('.person-checkbox:checked')).map(cb => cb.value);
     if (!checked.length) { alert('No members selected.'); return; }
     showConfirmModal(
-        `Delete <strong>${checked.length}</strong> selected member${checked.length > 1 ? 's' : ''}?<br>This cannot be undone.`,
+        `Delete <strong>${checked.length}</strong> selected member${checked.length > 1 ? 's' : ''}?<br>This will also remove them from all parent/child relationships.`,
         async () => {
             try {
-                for (const id of checked) await deletePersonFromDB(id);
+                for (const id of checked) {
+                    await removePersonFromAllRelations(id);
+                }
+                for (const id of checked) {
+                    await apiFetch(`people?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    delete personOwners[id];
+                }
+                savePersonOwners();
                 await updateAdminPanel();
                 renderWholeFamilyTree();
             } catch(e) { alert(`Failed: ${e.message}`); }
@@ -1784,8 +1851,17 @@ window.deleteAllHandler = async function() {
         `⚠️ Delete <strong>ALL ${FAMILY_DB.people.length} members</strong> and ALL family colors?<br>This will wipe the entire tree and <strong>cannot be undone</strong>.`,
         async () => {
             try {
-                for (const person of [...FAMILY_DB.people]) await deletePersonFromDB(person.id);
-                try { await apiFetch(`people?id=__na__`, { method: 'DELETE' }); } catch(e) {}
+                // First, clear all parents arrays to break all relationships
+                for (const person of FAMILY_DB.people) {
+                    await updatePersonInDB(person.id, { parents: JSON.stringify([]), is_root: true });
+                }
+                // Then delete all people
+                for (const person of [...FAMILY_DB.people]) {
+                    await apiFetch(`people?id=${encodeURIComponent(person.id)}`, { method: 'DELETE' });
+                    delete personOwners[person.id];
+                }
+                savePersonOwners();
+                // Delete family colors table
                 await apiFetch('family_colors', { method: 'DELETE' });
                 FAMILY_COLORS = {};
                 await loadPeople();
@@ -1872,5 +1948,3 @@ async function init() {
 
 setupEventListeners();
 init();
-
-
