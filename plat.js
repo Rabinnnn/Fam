@@ -143,6 +143,26 @@ async function deletePersonFromDB(personId) {
     return true;
 }
 
+async function removePersonFromAllRelations(personId) {
+    const peopleToUpdate = FAMILY_DB.people.filter(p => {
+        const parents = getRawParentsArray(p);
+        return parents.includes(personId);
+    });
+    for (const p of peopleToUpdate) {
+        let newParents = getRawParentsArray(p).filter(pid => pid !== personId);
+        if (newParents.length === 0) {
+            await updatePersonInDB(p.id, {
+                parents: JSON.stringify([]),
+                is_root: true
+            });
+        } else {
+            await updatePersonInDB(p.id, {
+                parents: JSON.stringify(newParents)
+            });
+        }
+    }
+}
+
 async function loadFamilyColors() {
     try {
         const data = await apiFetch('family_colors');
@@ -371,28 +391,6 @@ function findAllByPartialName(term) {
 }
 function canEditPerson(id) { return isAdmin || personOwners[id] === currentUser; }
 function isRootPerson(p) { return p.is_root === true || p.is_root === 'true'; }
-// Remove a person from all other people's parents arrays, and fix root status
-async function removePersonFromAllRelations(personId) {
-    const peopleToUpdate = FAMILY_DB.people.filter(p => {
-        const parents = getRawParentsArray(p);
-        return parents.includes(personId);
-    });
-    for (const p of peopleToUpdate) {
-        let newParents = getRawParentsArray(p).filter(pid => pid !== personId);
-        // Clean out any sentinel that might have been left alone (optional)
-        if (newParents.length === 0) {
-            // Person becomes a root
-            await updatePersonInDB(p.id, {
-                parents: JSON.stringify([]),
-                is_root: true
-            });
-        } else {
-            await updatePersonInDB(p.id, {
-                parents: JSON.stringify(newParents)
-            });
-        }
-    }
-}
 
 // Returns real parents only — strips ALL sentinel values
 function getParentsArray(person) {
@@ -865,6 +863,14 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
                         Tick the members who are children of the new person.
                         Unticked members stay as roots and are unaffected.
                     </div>
+                </div>
+                <div class="form-group" style="margin-top:0.75rem;">
+                    <label>➕ Add new children (comma‑separated full names)</label>
+                    <input type="text" id="wtNewChildrenNames" placeholder="e.g. John Smith, Jane Doe"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                        New persons will be created with the same family name as the new person above.
+                    </div>
                 </div>`;
         }
     } else if (placement === 'within') {
@@ -905,6 +911,14 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
                     Only members of the generation directly below are shown.
                     Tick those who will be children of the new person.
                 </div>
+            </div>
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label>➕ Add new children (comma‑separated full names)</label>
+                <input type="text" id="wtNewChildrenNamesWithin" placeholder="e.g. John Smith, Jane Doe"
+                       style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                    New persons will be created with the same family name as the new person.
+                </div>
             </div>`;
     } else if (placement === 'below') {
         section.innerHTML = `
@@ -943,7 +957,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
     try {
         if (placement === 'above') {
             if (isOldest) {
-                // FIX: When adding above the root generation, make ALL previous roots become children of the new person
+                // Original behaviour for root generation: all previous roots become children
                 const allRootIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
                 if (allRootIds.length === 0) {
                     return showErr('No root members found to attach above.');
@@ -966,17 +980,31 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     });
                 }
             } else {
-                // Original behaviour for non-root generations: selected children only
+                // Non-root generation: selected children + new children
                 const selectedChildren = Array.from(
                     document.querySelectorAll('.wt-above-child:checked') || []
                 ).map(o => o.value).filter(Boolean);
-                if (!selectedChildren.length)
-                    return showErr('Please select at least one child from the generation below.');
 
-                const selectedMembers = selectedChildren
-                    .map(id => FAMILY_DB.people.find(p => p.id === id))
-                    .filter(Boolean);
+                // New children from text input
+                const newChildrenInput = document.getElementById('wtNewChildrenNames')?.value.trim() || '';
+                const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
+                const newChildIds = [];
 
+                for (const childName of newChildNames) {
+                    const childUid = generateUID();
+                    const childId = makePersonId(childName, childUid);
+                    await addPersonToDB({
+                        id: childId, uid: childUid, name: childName,
+                        gender: 'unknown', dob: null,
+                        parents: JSON.stringify([newId]),
+                        is_root: false,
+                        family_name: familyName
+                    });
+                    newChildIds.push(childId);
+                    personOwners[childId] = currentUser;
+                }
+
+                // Add the new person
                 await addPersonToDB({
                     id: newId, uid, name, gender, dob: dob||null,
                     parents: JSON.stringify([]),
@@ -984,11 +1012,16 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     family_name: familyName
                 });
 
-                for (const member of selectedMembers) {
-                    const updatedParents = [...new Set([...getParentsArray(member), newId])];
-                    await updatePersonInDB(member.id, { parents: JSON.stringify(updatedParents), is_root: false });
+                // Link selected existing children
+                for (const memberId of selectedChildren) {
+                    const member = FAMILY_DB.people.find(p => p.id === memberId);
+                    if (member) {
+                        const updatedParents = [...new Set([...getParentsArray(member), newId])];
+                        await updatePersonInDB(member.id, { parents: JSON.stringify(updatedParents), is_root: false });
+                    }
                 }
 
+                // Handle unticked members (set __na__ as parent if no real parent)
                 const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
                 const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
                 for (const uid2 of unselected) {
@@ -1028,6 +1061,11 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 document.querySelectorAll('.wt-child-link2:checked') || []
             ).map(o => o.value);
 
+            // New children from text input
+            const newChildrenInput = document.getElementById('wtNewChildrenNamesWithin')?.value.trim() || '';
+            const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
+            const newChildIds = [];
+
             let parentIds = [];
             if (p1) parentIds.push(p1);
             if (p2 && p2 !== p1) parentIds.push(p2);
@@ -1043,6 +1081,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 }
             }
 
+            // Add the new person (sibling)
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentIds),
@@ -1050,7 +1089,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 family_name: familyName
             });
 
-            // Link specified children to new person
+            // Link specified existing children to new person
             for (const cid of childLinks) {
                 const child = FAMILY_DB.people.find(p => p.id === cid);
                 if (child) {
@@ -1060,15 +1099,24 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 }
             }
 
-            // ── KEY FIX ──────────────────────────────────────────────────
-            // If no children were explicitly linked AND no parents were found
-            // (i.e. this is a root-generation addition with no connections),
-            // find the children of any existing member in this same row and
-            // add the new person as an additional parent of those children.
-            // This creates the cluster edge that keeps them in the same tree.
-            if (childLinks.length === 0 && parentIds.length === 0) {
+            // Create new children and link them to new person
+            for (const childName of newChildNames) {
+                const childUid = generateUID();
+                const childId = makePersonId(childName, childUid);
+                await addPersonToDB({
+                    id: childId, uid: childUid, name: childName,
+                    gender: 'unknown', dob: null,
+                    parents: JSON.stringify([newId]),
+                    is_root: false,
+                    family_name: familyName
+                });
+                newChildIds.push(childId);
+                personOwners[childId] = currentUser;
+            }
+
+            // If no parents and no children, root clustering logic (__na__) may apply
+            if (childLinks.length === 0 && newChildIds.length === 0 && parentIds.length === 0) {
                 const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
-                // Collect all children of anyone in this generation row
                 const rowChildIds = [];
                 for (const rid of rowIds) {
                     const rowChildren = FAMILY_DB.people.filter(p =>
@@ -1079,7 +1127,6 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     }
                 }
                 if (rowChildIds.length) {
-                    // Link as co-parent of all children in next generation
                     for (const cid of rowChildIds) {
                         const child = FAMILY_DB.people.find(p => p.id === cid);
                         if (child) {
@@ -1089,16 +1136,6 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                         }
                     }
                 } else {
-                    // No children exist in the next generation either —
-                    // use __na__ as parent placeholder so the person is flagged
-                    // as a deliberate root, but stamp them with the same __na__
-                    // that existing isolated roots have so they visually sit in
-                    // the same cluster on next render.
-                    // Nothing more to do — the generation cache will place them
-                    // at depth 0 alongside the other root members since they
-                    // share no parents. The cluster will merge them on the
-                    // next findFamilyClusters call once a child is added later.
-                    // For now, ensure is_root is true so depth() = 0.
                     await updatePersonInDB(newId, { is_root: true });
                 }
             }
@@ -1201,7 +1238,7 @@ function buildLineageHtml(person) {
             uniqueAncestors.push(a);
         }
     }
-    // Sort ancestors from oldest (lowest generation number) to youngest (higher number)
+    // Order ancestors from oldest to youngest (by generation level ascending)
     uniqueAncestors.sort((a, b) => getPersonGenerationLevel(a) - getPersonGenerationLevel(b));
 
     const rawDescendants = getDirectDescendants(person);
@@ -1213,7 +1250,7 @@ function buildLineageHtml(person) {
             uniqueDescendants.push(d);
         }
     }
-    // Sort descendants from closest (children) to farthest (grandchildren, etc.) by generation level ascending
+    // Order descendants from youngest to oldest? Actually we want children, grandchildren, etc. ascending by generation level
     uniqueDescendants.sort((a, b) => getPersonGenerationLevel(a) - getPersonGenerationLevel(b));
 
     // Build HTML
@@ -1251,7 +1288,7 @@ function buildLineageHtml(person) {
         for (let i = 0; i < uniqueDescendants.length; i++) {
             const desc = uniqueDescendants[i];
             const genNum = getPersonGenerationLevel(desc) + 1;
-            const label = i === 0 ? `👶 Children — Generation ${genNum}` : `📍 Generation ${genNum}`;
+            const label = i === 0 ? `👶 Children — Generation ${genNum}` : (genNum === currentGen + 1 ? `📍 Generation ${genNum}` : `📍 Generation ${genNum}`);
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
                         <div class="lineage-nodes-row" style="justify-content:center;">
@@ -1711,14 +1748,15 @@ function exportToSpreadsheet() {
     clusters.forEach((cluster, ci) => {
         const letter = String.fromCharCode(65+ci), fn = clusterFamilyName(cluster);
         rows.push(`"=== FAMILY ${letter}: ${fn} (${cluster.length} members) ==="`);
-        rows.push('"Generation","Full Name","Unique ID","Family Name","Root?","Gender","Date of Birth","Father","Mother","Children"');
+        // Removed "Root?" column
+        rows.push('"Generation","Full Name","Unique ID","Family Name","Gender","Date of Birth","Father","Mother","Children"');
         const sorted = [...cluster].sort((a,b) => { const d = getPersonGenerationLevel(a)-getPersonGenerationLevel(b); return d||a.name.localeCompare(b.name); });
         let lastGen = null;
         sorted.forEach(person => {
             const gen = getPersonGenerationLevel(person)+1;
             if (lastGen !== null && gen !== lastGen) rows.push('');
             lastGen = gen;
-            rows.push(`"Gen ${gen}","${person.name}","#${person.uid||person.id}","${person.family_name||''}","${isRootPerson(person)?'Yes':'No'}","${person.gender||''}","${person.dob||''}","${getFather(person)}","${getMother(person)}","${getChildren(person)}"`);
+            rows.push(`"Gen ${gen}","${person.name}","#${person.uid||person.id}","${person.family_name||''}","${person.gender||''}","${person.dob||''}","${getFather(person)}","${getMother(person)}","${getChildren(person)}"`);
         });
         rows.push('','');
     });
