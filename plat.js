@@ -1155,106 +1155,113 @@ function buildNodeHtml(person, extraClass = '', onClick = null) {
 // LINEAGE MODAL (with spouse pairing)
 // ==============================================================
 function buildLineageHtml(person) {
-    const spouseMap = new Map();
-    for (const p of FAMILY_DB.people) {
-        const parents = getParentsArray(p);
-        if (parents.length >= 2) {
-            const [a, b] = parents;
-            if (!spouseMap.has(a)) spouseMap.set(a, new Set());
-            if (!spouseMap.has(b)) spouseMap.set(b, new Set());
-            spouseMap.get(a).add(b);
-            spouseMap.get(b).add(a);
-        }
+    if (!person) return '<div>Person not found</div>';
+    const familyName = person.family_name;
+    if (!familyName) {
+        return `<div style="text-align:center;padding:1rem;">⚠️ This person has no family name. Lineage view requires a family name to filter by.</div>`;
     }
 
-    const ancestorsRaw = getAncestors(person);
-    const uniqAncestors = [];
+    // Helper: get ancestors with same family name (direct line)
+    function getDirectAncestors(p, visited = new Set()) {
+        if (!p || visited.has(p.id)) return [];
+        visited.add(p.id);
+        const result = [];
+        const parents = getParentsArray(p).map(pid => findPersonById(pid)).filter(Boolean);
+        // Only keep parents with same family name
+        const sameFamilyParents = parents.filter(par => par.family_name === familyName);
+        for (const parent of sameFamilyParents) {
+            result.push(parent);
+            result.push(...getDirectAncestors(parent, visited));
+        }
+        return result;
+    }
+
+    // Helper: get descendants with same family name (direct line)
+    function getDirectDescendants(p, visited = new Set()) {
+        if (!p || visited.has(p.id)) return [];
+        visited.add(p.id);
+        const result = [];
+        const children = FAMILY_DB.people.filter(child => getParentsArray(child).includes(p.id));
+        // Only keep children with same family name
+        const sameFamilyChildren = children.filter(child => child.family_name === familyName);
+        for (const child of sameFamilyChildren) {
+            result.push(child);
+            result.push(...getDirectDescendants(child, visited));
+        }
+        return result;
+    }
+
+    // Get unique ancestors and descendants
+    const rawAncestors = getDirectAncestors(person);
+    const uniqueAncestors = [];
     const seenA = new Set();
-    for (const a of ancestorsRaw) { if (!seenA.has(a.id)) { seenA.add(a.id); uniqAncestors.push(a); } }
-
-    const aDepth = new Map();
-    function calcAncDepth(p, d) {
-        if (!p) return;
-        if (!aDepth.has(p.id) || aDepth.get(p.id) < d) aDepth.set(p.id, d);
-        for (const pid of getParentsArray(p)) calcAncDepth(findPersonById(pid), d+1);
-    }
-    calcAncDepth(person, 0);
-
-    const aGroups = new Map();
-    for (const a of uniqAncestors) {
-        const d = aDepth.get(a.id) ?? 0;
-        if (!aGroups.has(d)) aGroups.set(d, []);
-        aGroups.get(d).push(a);
-    }
-    const aDepths = Array.from(aGroups.keys()).sort((a,b) => b-a);
-
-    const descRaw = getDescendants(person);
-    const uniqDesc = [];
-    const seenD = new Set([person.id]);
-    for (const d of descRaw) { if (!seenD.has(d.id)) { seenD.add(d.id); uniqDesc.push(d); } }
-
-    const dDepth = new Map();
-    function calcDescDepth(p, d) {
-        if (!p) return;
-        if (!dDepth.has(p.id) || dDepth.get(p.id) < d) dDepth.set(p.id, d);
-        for (const child of FAMILY_DB.people.filter(c => getParentsArray(c).includes(p.id))) calcDescDepth(child, d+1);
-    }
-    calcDescDepth(person, 0);
-
-    const dGroups = new Map();
-    for (const d of uniqDesc) {
-        const depth = dDepth.get(d.id) ?? 1;
-        if (!dGroups.has(depth)) dGroups.set(depth, []);
-        dGroups.get(depth).push(d);
-    }
-    const dDepths = Array.from(dGroups.keys()).sort((a,b) => a-b);
-
-    function renderNodeGroup(nodes, focusId = null) {
-        const paired = new Set();
-        const items = [];
-        for (const m of nodes) {
-            if (paired.has(m.id)) continue;
-            const spouses = spouseMap.get(m.id);
-            if (spouses && spouses.size) {
-                const spouseInGroup = nodes.find(n => spouses.has(n.id) && !paired.has(n.id));
-                if (spouseInGroup) {
-                    items.push(`<div style="display:inline-flex;gap:0.5rem;align-items:center;">${buildNodeHtml(m, m.id === focusId ? 'focused-node' : '')}${buildNodeHtml(spouseInGroup, '')}</div>`);
-                    paired.add(m.id);
-                    paired.add(spouseInGroup.id);
-                    continue;
-                }
-            }
-            items.push(buildNodeHtml(m, m.id === focusId ? 'focused-node' : ''));
-            paired.add(m.id);
+    for (const a of rawAncestors) {
+        if (!seenA.has(a.id)) {
+            seenA.add(a.id);
+            uniqueAncestors.push(a);
         }
-        return items.join('');
     }
+    // Sort ancestors from oldest (lowest generation number) to youngest (higher number)
+    uniqueAncestors.sort((a, b) => getPersonGenerationLevel(a) - getPersonGenerationLevel(b));
 
-    const totalAncGen = aDepths.length;
-    let html = `<div class="lineage-chain">`;
+    const rawDescendants = getDirectDescendants(person);
+    const uniqueDescendants = [];
+    const seenD = new Set();
+    for (const d of rawDescendants) {
+        if (!seenD.has(d.id)) {
+            seenD.add(d.id);
+            uniqueDescendants.push(d);
+        }
+    }
+    // Sort descendants from closest (children) to farthest (grandchildren, etc.) by generation level ascending
+    uniqueDescendants.sort((a, b) => getPersonGenerationLevel(a) - getPersonGenerationLevel(b));
 
-    aDepths.forEach((depth, idx) => {
-        const level = aGroups.get(depth);
-        const genNum = totalAncGen - idx;
-        const label = depth === 0 ? `📍 ${escapeHtml(person.name)}` : idx === 0 ? `👴👵 Oldest Ancestors — Gen ${genNum}` : `📍 Generation ${genNum}`;
-        html += `<div class="lineage-gen-block">
-                    <div class="lineage-gen-label">${label}</div>
-                    <div class="lineage-nodes-row">${renderNodeGroup(level, person.id)}</div>
-                </div>`;
-        if (idx < aDepths.length - 1) html += `<div class="lineage-connector">▼</div>`;
-    });
+    // Build HTML
+    let html = `<div class="lineage-chain" style="display:flex; flex-direction:column; align-items:center;">`;
 
-    if (dDepths.length) {
-        html += `<div class="lineage-connector">▼</div>`;
-        dDepths.forEach((depth, idx) => {
-            const label = depth === 1 ? '👶 Children' : depth === 2 ? '📍 Grandchildren' : depth === 3 ? '📍 Great-Grandchildren' : `📍 Generation +${depth}`;
+    // Ancestors section
+    if (uniqueAncestors.length) {
+        for (let i = 0; i < uniqueAncestors.length; i++) {
+            const anc = uniqueAncestors[i];
+            const genNum = getPersonGenerationLevel(anc) + 1;
+            const label = i === 0 ? `👴👵 Oldest Ancestors — Generation ${genNum}` : `📍 Generation ${genNum}`;
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
-                        <div class="lineage-nodes-row">${renderNodeGroup(dGroups.get(depth))}</div>
+                        <div class="lineage-nodes-row" style="justify-content:center;">
+                            ${buildNodeHtml(anc)}
+                        </div>
                     </div>`;
-            if (idx < dDepths.length - 1) html += `<div class="lineage-connector">▼</div>`;
-        });
+            if (i < uniqueAncestors.length - 1) html += `<div class="lineage-connector">▼</div>`;
+        }
+        if (uniqueAncestors.length) html += `<div class="lineage-connector">▼</div>`;
     }
+
+    // Current person
+    const currentGen = getPersonGenerationLevel(person) + 1;
+    html += `<div class="lineage-gen-block">
+                <div class="lineage-gen-label">📍 ${escapeHtml(person.name)} — Generation ${currentGen}</div>
+                <div class="lineage-nodes-row" style="justify-content:center;">
+                    ${buildNodeHtml(person, 'focused-node')}
+                </div>
+            </div>`;
+
+    // Descendants section
+    if (uniqueDescendants.length) {
+        html += `<div class="lineage-connector">▼</div>`;
+        for (let i = 0; i < uniqueDescendants.length; i++) {
+            const desc = uniqueDescendants[i];
+            const genNum = getPersonGenerationLevel(desc) + 1;
+            const label = i === 0 ? `👶 Children — Generation ${genNum}` : `📍 Generation ${genNum}`;
+            html += `<div class="lineage-gen-block">
+                        <div class="lineage-gen-label">${label}</div>
+                        <div class="lineage-nodes-row" style="justify-content:center;">
+                            ${buildNodeHtml(desc)}
+                        </div>
+                    </div>`;
+            if (i < uniqueDescendants.length - 1) html += `<div class="lineage-connector">▼</div>`;
+        }
+    }
+
     html += `</div>`;
     return html;
 }
