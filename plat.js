@@ -876,6 +876,15 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
     } else if (placement === 'within') {
         const allNameOpts = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name))
             .map(p => `<option value="${escapeHtml(p.name)}">`).join('');
+
+        // --- FIX: Show ALL members of the generation directly below ---
+        const targetGen = depthIdx + 1;
+        const childrenBelow = FAMILY_DB.people.filter(p => getPersonGenerationLevel(p) === targetGen);
+        const childrenHtml = childrenBelow.length
+            ? childrenBelow.map(p => buildCheckboxRow(p, 'wt-child-link2')).join('')
+            : '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members in the generation below yet.</div>';
+        // -------------------------------------------------------------
+
         section.innerHTML = `
             <div class="form-group" style="margin-top:0.75rem;">
                 <label>Inherit parents from sibling <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
@@ -900,24 +909,12 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
             <div class="form-group">
                 <label>Child(ren) <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
                 <div id="wtChildLink2Wrap"
-                     style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
+                    style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
                             max-height:160px;overflow-y:auto;background:white;">
-                    ${(window._wtNextGenPeople||[]).length
-                        ? (window._wtNextGenPeople||[]).map(p => buildCheckboxRow(p, 'wt-child-link2')).join('')
-                        : '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members in the generation below yet.</div>'
-                    }
+                    ${childrenHtml}
                 </div>
                 <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
-                    Only members of the generation directly below are shown.
-                    Tick those who will be children of the new person.
-                </div>
-            </div>
-            <div class="form-group" style="margin-top:0.75rem;">
-                <label>➕ Add new children (comma‑separated full names)</label>
-                <input type="text" id="wtNewChildrenNamesWithin" placeholder="e.g. John Smith, Jane Doe"
-                       style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
-                    New persons will be created with the same family name as the new person.
+                    All people in the generation directly below are shown. Tick those who will be children of the new person.
                 </div>
             </div>`;
     } else if (placement === 'below') {
