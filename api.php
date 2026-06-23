@@ -71,9 +71,10 @@ elseif ($method === 'POST') {
     $data = getRequestBody();
     try {
         if ($table === 'people') {
+            // Added spouse and custom_gen to the INSERT
             $stmt = $pdo->prepare("INSERT INTO people 
-                (id, uid, name, gender, dob, parents, is_root, family_name)
-                VALUES (:id, :uid, :name, :gender, :dob, :parents, :is_root, :family_name)");
+                (id, uid, name, gender, dob, parents, is_root, family_name, spouse, custom_gen)
+                VALUES (:id, :uid, :name, :gender, :dob, :parents, :is_root, :family_name, :spouse, :custom_gen)");
             $stmt->execute([
                 ':id'          => $data['id'],
                 ':uid'         => $data['uid'],
@@ -83,6 +84,8 @@ elseif ($method === 'POST') {
                 ':parents'     => $data['parents'],
                 ':is_root'     => $data['is_root'] ? 1 : 0,
                 ':family_name' => $data['family_name'] ?? null,
+                ':spouse'      => $data['spouse'] ?? null,
+                ':custom_gen'  => $data['custom_gen'] ?? null, // can be null or int
             ]);
             sendJson(['message' => 'Created'], 201);
         } elseif ($table === 'family_colors') {
@@ -104,7 +107,8 @@ elseif ($method === 'PATCH') {
     $data = getRequestBody();
     $fields = [];
     $params = [':id' => $id];
-    $allowed = ['name', 'gender', 'dob', 'parents', 'is_root', 'family_name'];
+    // Added 'spouse' and 'custom_gen' to allowed fields
+    $allowed = ['name', 'gender', 'dob', 'parents', 'is_root', 'family_name', 'spouse', 'custom_gen'];
     foreach ($allowed as $field) {
         if (array_key_exists($field, $data)) {
             $fields[] = "$field = :$field";
@@ -132,7 +136,6 @@ elseif ($method === 'DELETE') {
             $stmt->execute([$id]);
             sendJson(['message' => 'Deleted']);
         } elseif ($table === 'family_colors') {
-            // Delete all rows in family_colors table
             $stmt = $pdo->prepare("DELETE FROM family_colors");
             $stmt->execute();
             sendJson(['message' => 'All family colors deleted']);

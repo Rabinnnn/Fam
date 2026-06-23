@@ -253,6 +253,20 @@ function _paintConnectors(wrap) {
         });
     });
 
+    // ── D. Spouse connectors (solid blue line) ──────────────────
+    for (const p of FAMILY_DB.people) {
+        if (!p.spouse) continue;
+        if (!nodeMap[p.id] || !nodeMap[p.spouse]) continue;
+        const n1 = nodeMap[p.id];
+        const n2 = nodeMap[p.spouse];
+        lines.push({
+            d: `M ${n1.cx} ${n1.cy} L ${n2.cx} ${n2.cy}`,
+            stroke: '#3a7abf',
+            width: 2.5,
+            dash: ''
+        });
+    }
+
     // ── Render SVG with explicit pixel dimensions ────────────
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(SVG_NS, 'svg');
