@@ -469,10 +469,10 @@ function computeGenerations() {
     const gen = new Map();
     const queue = [];
 
-    // Roots: people with no real parents (sentinels stripped)
+    // Roots: people with no real parents (sentinels stripped) → generation 1
     for (const p of FAMILY_DB.people) {
         if (getParentsArray(p).length === 0) {
-            gen.set(p.id, 0);
+            gen.set(p.id, 1);
             queue.push(p.id);
         }
     }
@@ -508,8 +508,8 @@ function computeGenerations() {
         }
     }
 
-    // Override with custom_gen if set
-    let maxGen = 0;
+    // Override with custom_gen if set (custom_gen is 1-based now)
+    let maxGen = 1;
     for (const [id, g] of gen) {
         if (g > maxGen) maxGen = g;
     }
@@ -521,7 +521,7 @@ function computeGenerations() {
         } else if (getParentsArray(p).length === 0 && getRawParentsArray(p).includes('__nc__')) {
             gen.set(p.id, maxGen + 1);
         } else if (!gen.has(p.id)) {
-            gen.set(p.id, 0);
+            gen.set(p.id, 1);
         }
     }
 
@@ -533,9 +533,9 @@ function refreshGenerationCache() {
 }
 
 function getPersonGenerationLevel(person) {
-    if (!person) return 0;
+    if (!person) return 1; // default to 1 if not found
     if (!generationCache.has(person.id)) refreshGenerationCache();
-    return generationCache.get(person.id) || 0;
+    return generationCache.get(person.id) || 1;
 }
 
 // ==============================================================
@@ -683,9 +683,9 @@ function findFamilyClusters() {
 }
 
 function clusterFamilyName(cluster) {
-    const gen0 = cluster.filter(p => getPersonGenerationLevel(p) === 0);
+    const gen1 = cluster.filter(p => getPersonGenerationLevel(p) === 1);
 
-    const scored = gen0
+    const scored = gen1
         .filter(p => p.family_name)
         .map(p => ({
             p,
@@ -696,11 +696,11 @@ function clusterFamilyName(cluster) {
 
     if (scored.length) return scored[0].p.family_name;
 
-    const gen0sorted = [...gen0].sort((a, b) =>
+    const gen1sorted = [...gen1].sort((a, b) =>
         FAMILY_DB.people.findIndex(x => x.id === a.id) -
         FAMILY_DB.people.findIndex(x => x.id === b.id)
     );
-    if (gen0sorted.length && gen0sorted[0].family_name) return gen0sorted[0].family_name;
+    if (gen1sorted.length && gen1sorted[0].family_name) return gen1sorted[0].family_name;
 
     const roots = cluster.filter(isRootPerson).filter(p => p.family_name);
     if (roots.length) return roots[0].family_name;
@@ -746,7 +746,7 @@ function buildWholeTreeRows(cluster) {
     if (!byDepth.size) return [];
     const maxDepth = Math.max(...byDepth.keys());
     const rows = [];
-    for (let d = 0; d <= maxDepth; d++) {
+    for (let d = 1; d <= maxDepth; d++) {
         const row = byDepth.get(d) || [];
         const paired = new Set();
         const sorted = [];
@@ -805,9 +805,6 @@ function renderWholeFamilyTree() {
         return html;
     }
 
-    // --- NEW: If there is more than one cluster, alert and block? No, we want to merge them.
-    // Actually the system already merges via __nc__ and spouse edges.
-    // For safety, we can show a warning if multiple clusters exist.
     if (clusters.length > 1) {
         console.warn('⚠️ Multiple disconnected clusters detected. Please connect them via relationships or __nc__ links.');
     }
@@ -1057,7 +1054,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 if (allRootIds.length === 0) return showErr('No root members found to attach above.');
                 parentsArray = [];
                 isRoot = true;
-                customGen = 0;  // lock to generation 0
+                customGen = 1; // new root is Generation 1
                 await addPersonToDB({
                     id: newId, uid, name, gender, dob: dob||null,
                     parents: JSON.stringify(parentsArray),
@@ -1084,6 +1081,8 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
                 const newChildIds = [];
 
+                // New children will be in the same generation as the selected row (depthIdx+1)
+                const childGen = depthIdx + 1;
                 for (const childName of newChildNames) {
                     const childUid = generateUID();
                     const childId = makePersonId(childName, childUid);
@@ -1094,7 +1093,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                         is_root: false,
                         family_name: familyName,
                         spouse: null,
-                        custom_gen: depthIdx // children will be in this generation
+                        custom_gen: childGen
                     });
                     newChildIds.push(childId);
                     personOwners[childId] = currentUser;
@@ -1103,8 +1102,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 // New person becomes parent of selected children
                 parentsArray = [];
                 isRoot = true;
-                customGen = depthIdx - 1; // one generation above the row
-
+                customGen = depthIdx; // one generation above (depthIdx is 0-based, so customGen = depthIdx)
                 await addPersonToDB({
                     id: newId, uid, name, gender, dob: dob||null,
                     parents: JSON.stringify(parentsArray),
@@ -1175,15 +1173,16 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 if (!newChild) {
                     const nuid = generateUID();
                     const nid = makePersonId(newChildName, nuid);
+                    // New child will be one generation below (depthIdx+2)
                     await addPersonToDB({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: JSON.stringify([]), is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: depthIdx + 1 // child will be below
+                        spouse: null, custom_gen: depthIdx + 2
                     });
                     FAMILY_DB.people.push({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: '[]', is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: depthIdx + 1
+                        spouse: null, custom_gen: depthIdx + 2
                     });
                     newChild = { id: nid, name: newChildName };
                 }
@@ -1205,10 +1204,9 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 }
             }
 
-            // Always set __nc__ if no real parents, to keep the cluster connected.
             parentsArray = parentIds.length > 0 ? parentIds : ['__nc__'];
             isRoot = (parentsArray.length === 0);
-            customGen = depthIdx; // lock to the same generation row
+            customGen = depthIdx + 1; // same generation row
 
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
@@ -1235,7 +1233,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (pl2 && pl2 !== pl1) parentIds.push(pl2);
             parentsArray = parentIds;
             isRoot = false;
-            customGen = depthIdx + 1; // one generation below
+            customGen = depthIdx + 2; // one generation below
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
@@ -1249,13 +1247,11 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (!partnerId) return showErr('Please select a partner.');
             const partner = findPersonById(partnerId);
             if (!partner) return showErr('Selected partner not found.');
-            const partnerGen = getPersonGenerationLevel(partner);
-
+            // Do NOT set custom_gen – let BFS sync via spouse edge
             spouseId = partnerId;
             parentsArray = [];
             isRoot = false;
-            customGen = partnerGen; // same generation as partner
-
+            customGen = null; // let BFS compute
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
@@ -1264,7 +1260,6 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 spouse: spouseId,
                 custom_gen: customGen
             });
-
             await updatePersonInDB(partnerId, { spouse: newId });
         }
 
@@ -1365,7 +1360,7 @@ function buildLineageHtml(person) {
     if (uniqueAncestors.length) {
         for (let i = 0; i < uniqueAncestors.length; i++) {
             const anc = uniqueAncestors[i];
-            const genNum = getPersonGenerationLevel(anc) + 1;
+            const genNum = getPersonGenerationLevel(anc);
             const label = i === 0 ? `👴👵 Oldest Ancestors — Generation ${genNum}` : `📍 Generation ${genNum}`;
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
@@ -1378,7 +1373,7 @@ function buildLineageHtml(person) {
         if (uniqueAncestors.length) html += `<div class="lineage-connector">▼</div>`;
     }
 
-    const currentGen = getPersonGenerationLevel(person) + 1;
+    const currentGen = getPersonGenerationLevel(person);
     html += `<div class="lineage-gen-block">
                 <div class="lineage-gen-label">📍 ${escapeHtml(person.name)} — Generation ${currentGen}</div>
                 <div class="lineage-nodes-row" style="justify-content:center;">
@@ -1390,7 +1385,7 @@ function buildLineageHtml(person) {
         html += `<div class="lineage-connector">▼</div>`;
         for (let i = 0; i < uniqueDescendants.length; i++) {
             const desc = uniqueDescendants[i];
-            const genNum = getPersonGenerationLevel(desc) + 1;
+            const genNum = getPersonGenerationLevel(desc);
             const label = i === 0 ? `👶 Children — Generation ${genNum}` : (genNum === currentGen + 1 ? `📍 Generation ${genNum}` : `📍 Generation ${genNum}`);
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
@@ -1456,14 +1451,14 @@ function showEditModal(person) {
     // Build datalist options with NAME as value (display)
     const allPeopleOpts = allPeople.map(p => `<option value="${escapeHtml(p.name)}">`).join('');
 
-    // Compute max generation for dropdown
-    let maxGen = 0;
+    // Compute max generation for dropdown (1-based)
+    let maxGen = 1;
     for (const p of FAMILY_DB.people) {
         const g = getPersonGenerationLevel(p);
         if (g > maxGen) maxGen = g;
     }
     const genOptions = [];
-    for (let i = 0; i <= maxGen + 2; i++) {
+    for (let i = 1; i <= maxGen + 2; i++) {
         const selected = person.custom_gen === i ? 'selected' : '';
         genOptions.push(`<option value="${i}" ${selected}>Generation ${i}</option>`);
     }
@@ -2003,7 +1998,7 @@ function exportToSpreadsheet() {
         const sorted = [...cluster].sort((a,b) => { const d = getPersonGenerationLevel(a)-getPersonGenerationLevel(b); return d||a.name.localeCompare(b.name); });
         let lastGen = null;
         sorted.forEach(person => {
-            const gen = getPersonGenerationLevel(person)+1;
+            const gen = getPersonGenerationLevel(person);
             if (lastGen !== null && gen !== lastGen) rows.push('');
             lastGen = gen;
             rows.push(`"Gen ${gen}","${person.name}","#${person.uid||person.id}","${person.family_name||''}","${person.gender||''}","${person.dob||''}","${getFather(person)}","${getMother(person)}","${getChildren(person)}","${getSpouse(person)}"`);
@@ -2028,8 +2023,8 @@ async function updateAdminPanel() {
     await loadPeople();
     document.getElementById('totalPeopleCount').textContent = FAMILY_DB.people.length;
     let maxDepth = 0;
-    FAMILY_DB.people.forEach(p => { maxDepth = Math.max(maxDepth, getPersonGenerationLevel(p)); });
-    document.getElementById('totalGenerations').textContent  = maxDepth + 1;
+    FAMILY_DB.people.forEach(p => { const g = getPersonGenerationLevel(p); if (g > maxDepth) maxDepth = g; });
+    document.getElementById('totalGenerations').textContent  = maxDepth;
     document.getElementById('totalContributors').textContent = FAMILY_DB.people.length;
 
     const toolbar = document.getElementById('adminBulkToolbar');
