@@ -508,17 +508,17 @@ function computeGenerations() {
         }
     }
 
-    // Override with custom_gen if set (custom_gen is 1-based now)
+    // --- custom_gen override is REMOVED to prevent instability ---
+    // We ignore any stored custom_gen values.
+
     let maxGen = 1;
     for (const [id, g] of gen) {
         if (g > maxGen) maxGen = g;
     }
 
-    // Assign __nc__ people (no real parents) to bottom if no custom_gen
+    // Assign __nc__ people (no real parents) to bottom
     for (const p of FAMILY_DB.people) {
-        if (p.custom_gen !== null && p.custom_gen !== undefined) {
-            gen.set(p.id, p.custom_gen);
-        } else if (getParentsArray(p).length === 0 && getRawParentsArray(p).includes('__nc__')) {
+        if (getParentsArray(p).length === 0 && getRawParentsArray(p).includes('__nc__')) {
             gen.set(p.id, maxGen + 1);
         } else if (!gen.has(p.id)) {
             gen.set(p.id, 1);
@@ -1045,7 +1045,6 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
     try {
         let parentsArray = [];
         let isRoot = false;
-        let customGen = null;
         let spouseId = null;
 
         if (placement === 'above') {
@@ -1054,14 +1053,13 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 if (allRootIds.length === 0) return showErr('No root members found to attach above.');
                 parentsArray = [];
                 isRoot = true;
-                customGen = 1; // new root is Generation 1
                 await addPersonToDB({
                     id: newId, uid, name, gender, dob: dob||null,
                     parents: JSON.stringify(parentsArray),
                     is_root: isRoot,
                     family_name: familyName,
                     spouse: null,
-                    custom_gen: customGen
+                    custom_gen: null  // no override
                 });
                 for (const rootId of allRootIds) {
                     const rootPerson = FAMILY_DB.people.find(p => p.id === rootId);
@@ -1081,8 +1079,6 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
                 const newChildIds = [];
 
-                // New children will be in the same generation as the selected row (depthIdx+1)
-                const childGen = depthIdx + 1;
                 for (const childName of newChildNames) {
                     const childUid = generateUID();
                     const childId = makePersonId(childName, childUid);
@@ -1093,23 +1089,21 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                         is_root: false,
                         family_name: familyName,
                         spouse: null,
-                        custom_gen: childGen
+                        custom_gen: null
                     });
                     newChildIds.push(childId);
                     personOwners[childId] = currentUser;
                 }
 
-                // New person becomes parent of selected children
                 parentsArray = [];
                 isRoot = true;
-                customGen = depthIdx; // one generation above (depthIdx is 0-based, so customGen = depthIdx)
                 await addPersonToDB({
                     id: newId, uid, name, gender, dob: dob||null,
                     parents: JSON.stringify(parentsArray),
                     is_root: isRoot,
                     family_name: familyName,
                     spouse: null,
-                    custom_gen: customGen
+                    custom_gen: null
                 });
 
                 for (const memberId of selectedChildren) {
@@ -1173,16 +1167,15 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 if (!newChild) {
                     const nuid = generateUID();
                     const nid = makePersonId(newChildName, nuid);
-                    // New child will be one generation below (depthIdx+2)
                     await addPersonToDB({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: JSON.stringify([]), is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: depthIdx + 2
+                        spouse: null, custom_gen: null
                     });
                     FAMILY_DB.people.push({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: '[]', is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: depthIdx + 2
+                        spouse: null, custom_gen: null
                     });
                     newChild = { id: nid, name: newChildName };
                 }
@@ -1206,7 +1199,6 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
 
             parentsArray = parentIds.length > 0 ? parentIds : ['__nc__'];
             isRoot = (parentsArray.length === 0);
-            customGen = depthIdx + 1; // same generation row
 
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
@@ -1214,7 +1206,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: null,
-                custom_gen: customGen
+                custom_gen: null
             });
 
             for (const cid of childLinks) {
@@ -1233,32 +1225,29 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (pl2 && pl2 !== pl1) parentIds.push(pl2);
             parentsArray = parentIds;
             isRoot = false;
-            customGen = depthIdx + 2; // one generation below
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: null,
-                custom_gen: customGen
+                custom_gen: null
             });
         } else if (placement === 'spouse') {
             const partnerId = document.getElementById('wtSpousePartner')?.value;
             if (!partnerId) return showErr('Please select a partner.');
             const partner = findPersonById(partnerId);
             if (!partner) return showErr('Selected partner not found.');
-            // Do NOT set custom_gen – let BFS sync via spouse edge
             spouseId = partnerId;
             parentsArray = [];
             isRoot = false;
-            customGen = null; // let BFS compute
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: spouseId,
-                custom_gen: customGen
+                custom_gen: null
             });
             await updatePersonInDB(partnerId, { spouse: newId });
         }
@@ -1437,7 +1426,7 @@ window.closeLineageModal = function() { document.getElementById('lineageModal')?
 window.handleNodeClick = function(personId) { showLineageModal(personId); };
 
 // ==============================================================
-// EDIT MODAL
+// EDIT MODAL (Move to Generation feature REMOVED)
 // ==============================================================
 function showEditModal(person) {
     if (!person) return;
@@ -1450,18 +1439,6 @@ function showEditModal(person) {
 
     // Build datalist options with NAME as value (display)
     const allPeopleOpts = allPeople.map(p => `<option value="${escapeHtml(p.name)}">`).join('');
-
-    // Compute max generation for dropdown (1-based)
-    let maxGen = 1;
-    for (const p of FAMILY_DB.people) {
-        const g = getPersonGenerationLevel(p);
-        if (g > maxGen) maxGen = g;
-    }
-    const genOptions = [];
-    for (let i = 1; i <= maxGen + 2; i++) {
-        const selected = person.custom_gen === i ? 'selected' : '';
-        genOptions.push(`<option value="${i}" ${selected}>Generation ${i}</option>`);
-    }
 
     const currentParents = getParentsArray(person).map(pid => findPersonById(pid)).filter(Boolean);
     const currentChildren = FAMILY_DB.people.filter(p => getParentsArray(p).includes(person.id));
@@ -1517,13 +1494,7 @@ function showEditModal(person) {
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
                     <datalist id="editFamilyList">${fnDatalist}</datalist>
                 </div>
-                <div class="form-group">
-                    <label>Move to Generation <span style="font-weight:400;color:#888;">(optional override)</span></label>
-                    <select id="editCustomGen" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                        <option value="">Auto (computed)</option>
-                        ${genOptions.join('')}
-                    </select>
-                </div>
+                <!-- Move to Generation dropdown REMOVED -->
                 <div class="form-group">
                     <label>Spouse <span style="font-weight:400;color:#888;">(link to partner)</span></label>
                     <select id="editSpouse" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
@@ -1707,7 +1678,6 @@ window.saveEdit = async function(personId) {
     const gender     = document.getElementById('editGender').value;
     const dob        = document.getElementById('editDob').value;
     const familyName = document.getElementById('editFamilyName').value.trim();
-    const customGen  = document.getElementById('editCustomGen').value;
     const spouseId   = document.getElementById('editSpouse').value;
 
     if (!name) { alert('Name cannot be empty'); return; }
@@ -1763,10 +1733,10 @@ window.saveEdit = async function(personId) {
         name, 
         gender, 
         family_name: familyName || null,
-        custom_gen: customGen !== '' ? parseInt(customGen) : null,
         spouse: spouseId || null,
         parents: JSON.stringify(newParents.length ? newParents : []),
         is_root: newParents.length === 0
+        // custom_gen is intentionally omitted – we never update it
     };
     if (dob) updates.dob = dob;
 
@@ -1896,7 +1866,7 @@ async function contributeToTree(event) {
             is_root: parentIds.length === 0,
             family_name: familyName,
             spouse: null,
-            custom_gen: null // will be computed as bottom by generation engine
+            custom_gen: null
         });
         await loadPeople();
         personOwners[newId] = currentUser; savePersonOwners();
