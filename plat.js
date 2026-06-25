@@ -17,6 +17,12 @@ const COLOR_PALETTE = [
 ];
 
 // ==============================================================
+// ANCHOR MEMBER – permanent root at Generation 0
+// ==============================================================
+const ANCHOR_ID = 'anchor_root_00001';
+const ANCHOR_NAME = 'Anchor Root';
+
+// ==============================================================
 // HELPER FUNCTIONS
 // ==============================================================
 function generateUID() {
@@ -138,6 +144,11 @@ async function deletePersonFromDB(personId) {
 }
 
 async function removePersonFromAllRelations(personId) {
+    if (personId === ANCHOR_ID) {
+        console.warn('⚠️ Cannot remove relations from the anchor member');
+        return;
+    }
+
     const peopleToUpdate = FAMILY_DB.people.filter(p => {
         const parents = getRawParentsArray(p);
         return parents.includes(personId);
@@ -155,8 +166,7 @@ async function removePersonFromAllRelations(personId) {
             });
         }
     }
-    // Also remove spouse links
-    const spouseUpdates = FAMILY_DB.people.filter(p => p.spouse === personId);
+    const spouseUpdates = FAMILY_DB.people.filter(p => p.spouse === personId && p.id !== ANCHOR_ID);
     for (const p of spouseUpdates) {
         await updatePersonInDB(p.id, { spouse: null });
     }
@@ -252,6 +262,33 @@ async function ensurePlaceholderExists() {
         }
     } catch(e) {
         console.warn('Could not create __na__ placeholder:', e.message);
+    }
+}
+
+async function ensureAnchorExists() {
+    try {
+        const existing = FAMILY_DB.people.find(p => p.id === ANCHOR_ID);
+        if (!existing) {
+            console.log('🔗 Creating anchor member...');
+            await addPersonToDB({
+                id: ANCHOR_ID,
+                uid: 'anchor',
+                name: ANCHOR_NAME,
+                gender: 'unknown',
+                dob: null,
+                parents: JSON.stringify([]),
+                is_root: true,
+                family_name: null,
+                spouse: null,
+                custom_gen: 0 // Anchor is ALWAYS generation 0
+            });
+            await loadPeople();
+            console.log('✅ Anchor member created successfully');
+        } else {
+            console.log('✅ Anchor member already exists');
+        }
+    } catch(e) {
+        console.warn('Could not create anchor member:', e.message);
     }
 }
 
@@ -378,7 +415,7 @@ function onPersonAutocomplete(name, family, targetFamilyInputId) {
 }
 
 // ==============================================================
-// DATABASE LOOKUP HELPERS & GENERATION CACHE (SPOUSE-AWARE)
+// DATABASE LOOKUP HELPERS & GENERATION CACHE
 // ==============================================================
 function findPersonById(id) { return FAMILY_DB.people.find(p => p.id === id) || null; }
 function findPeopleByName(name) {
@@ -433,7 +470,6 @@ let generationCache = new Map();
 
 function buildSpouseMap() {
     const spouseMap = new Map();
-    // 1. Inference from shared children
     for (const p of FAMILY_DB.people) {
         const parents = getParentsArray(p);
         if (parents.length >= 2) {
@@ -444,7 +480,6 @@ function buildSpouseMap() {
             spouseMap.get(b).add(a);
         }
     }
-    // 2. Explicit spouse field (bidirectional)
     for (const p of FAMILY_DB.people) {
         if (p.spouse) {
             if (!spouseMap.has(p.id)) spouseMap.set(p.id, new Set());
@@ -469,15 +504,16 @@ function computeGenerations() {
     const gen = new Map();
     const queue = [];
 
-    // Roots: people with no real parents (sentinels stripped) → generation 1
+    // Roots: people with no real parents get generation 1 (except anchor which is 0)
     for (const p of FAMILY_DB.people) {
-        if (getParentsArray(p).length === 0) {
+        if (p.id === ANCHOR_ID) {
+            gen.set(p.id, 0);
+        } else if (getParentsArray(p).length === 0) {
             gen.set(p.id, 1);
             queue.push(p.id);
         }
     }
 
-    // BFS from roots
     while (queue.length) {
         const pid = queue.shift();
         const currentGen = gen.get(pid);
@@ -508,18 +544,27 @@ function computeGenerations() {
         }
     }
 
-    // --- custom_gen override is REMOVED to prevent instability ---
-    // We ignore any stored custom_gen values.
+    // Override with custom_gen – ensure it's a number
+    for (const p of FAMILY_DB.people) {
+        if (p.custom_gen !== null && p.custom_gen !== undefined && p.id !== ANCHOR_ID) {
+            const genVal = parseInt(p.custom_gen, 10);
+            if (!isNaN(genVal)) {
+                gen.set(p.id, genVal);
+            }
+        }
+    }
 
     let maxGen = 1;
     for (const [id, g] of gen) {
-        if (g > maxGen) maxGen = g;
+        if (g > maxGen && id !== ANCHOR_ID) maxGen = g;
     }
 
-    // Assign __nc__ people (no real parents) to bottom
     for (const p of FAMILY_DB.people) {
+        if (p.id === ANCHOR_ID) continue;
         if (getParentsArray(p).length === 0 && getRawParentsArray(p).includes('__nc__')) {
-            gen.set(p.id, maxGen + 1);
+            if (!gen.has(p.id) || gen.get(p.id) === undefined || gen.get(p.id) === null) {
+                gen.set(p.id, maxGen + 1);
+            }
         } else if (!gen.has(p.id)) {
             gen.set(p.id, 1);
         }
@@ -533,9 +578,10 @@ function refreshGenerationCache() {
 }
 
 function getPersonGenerationLevel(person) {
-    if (!person) return 1; // default to 1 if not found
+    if (!person) return 1;
     if (!generationCache.has(person.id)) refreshGenerationCache();
-    return generationCache.get(person.id) || 1;
+    const g = generationCache.get(person.id);
+    return g !== undefined ? g : 1;
 }
 
 // ==============================================================
@@ -577,10 +623,6 @@ function populateFamilyNameDropdown() {
 // PREVENT DISCONNECTION – VALIDATION HELPER
 // ==============================================================
 function wouldBeIsolated(personId, newParents, desiredChildren, spouseId) {
-    // A person is connected if they have:
-    // 1. At least one real parent (newParents)
-    // 2. At least one child (desiredChildren)
-    // 3. A spouse (spouseId)
     const hasParent = newParents.some(pid => pid && !SENTINELS.has(pid));
     const hasChild = desiredChildren.length > 0;
     const hasSpouse = !!spouseId;
@@ -589,7 +631,7 @@ function wouldBeIsolated(personId, newParents, desiredChildren, spouseId) {
 
 function wouldPersonBeIsolatedAfterRemovingChild(personId, childIdToRemove) {
     const person = findPersonById(personId);
-    if (!person) return true; // treat as isolated to be safe
+    if (!person) return true;
     const currentParents = getParentsArray(person);
     const currentChildren = FAMILY_DB.people.filter(p => getParentsArray(p).includes(personId)).map(p => p.id);
     const newChildren = currentChildren.filter(id => id !== childIdToRemove);
@@ -622,7 +664,6 @@ function findFamilyClusters() {
     const adj = new Map();
     FAMILY_DB.people.forEach(p => adj.set(p.id, new Set()));
 
-    // Edge type 1: real parent ↔ child
     FAMILY_DB.people.forEach(p => {
         for (const pid of getParentsArray(p)) {
             if (adj.has(pid)) {
@@ -632,7 +673,6 @@ function findFamilyClusters() {
         }
     });
 
-    // Edge type 2: __nc__ clustering
     const ncMembers = FAMILY_DB.people
         .filter(p => getRawParentsArray(p).includes('__nc__'))
         .map(p => p.id);
@@ -645,7 +685,8 @@ function findFamilyClusters() {
     if (ncMembers.length) {
         const firstRealRoot = FAMILY_DB.people.find(p =>
             !getRawParentsArray(p).includes('__nc__') &&
-            getParentsArray(p).length === 0
+            getParentsArray(p).length === 0 &&
+            p.id !== ANCHOR_ID
         );
         if (firstRealRoot) {
             ncMembers.forEach(id => {
@@ -655,7 +696,6 @@ function findFamilyClusters() {
         }
     }
 
-    // Edge type 3: explicit spouse links
     for (const p of FAMILY_DB.people) {
         if (p.spouse && adj.has(p.id) && adj.has(p.spouse)) {
             adj.get(p.id).add(p.spouse);
@@ -663,17 +703,41 @@ function findFamilyClusters() {
         }
     }
 
-    const visited = new Set(), clusters = [];
+    const anchor = FAMILY_DB.people.find(p => p.id === ANCHOR_ID);
+    if (anchor && FAMILY_DB.people.length > 1) {
+        const visited = new Set();
+        const queue = [anchor.id];
+        visited.add(anchor.id);
+        while (queue.length) {
+            const pid = queue.shift();
+            for (const nid of (adj.get(pid) || [])) {
+                if (!visited.has(nid)) {
+                    visited.add(nid);
+                    queue.push(nid);
+                }
+            }
+        }
+        if (visited.size === 1) {
+            const firstOther = FAMILY_DB.people.find(p => p.id !== ANCHOR_ID);
+            if (firstOther) {
+                adj.get(anchor.id).add(firstOther.id);
+                adj.get(firstOther.id).add(anchor.id);
+                console.log('🔗 Connected anchor to:', firstOther.name);
+            }
+        }
+    }
+
+    const visitedCluster = new Set(), clusters = [];
     for (const person of FAMILY_DB.people) {
-        if (!visited.has(person.id)) {
+        if (!visitedCluster.has(person.id)) {
             const cluster = [], queue = [person.id];
-            visited.add(person.id);
+            visitedCluster.add(person.id);
             while (queue.length) {
                 const cid = queue.shift();
                 const cp = findPersonById(cid);
                 if (cp) cluster.push(cp);
                 for (const nid of (adj.get(cid) || [])) {
-                    if (!visited.has(nid)) { visited.add(nid); queue.push(nid); }
+                    if (!visitedCluster.has(nid)) { visitedCluster.add(nid); queue.push(nid); }
                 }
             }
             if (cluster.length) clusters.push(cluster);
@@ -711,10 +775,8 @@ function clusterFamilyName(cluster) {
 
 function buildWholeTreeRows(cluster) {
     const clusterIds = new Set(cluster.map(p => p.id));
-    // Build spouse map from both inference (shared children) and explicit spouse field
     const spouseMap = new Map();
 
-    // 1. Inference from shared children
     for (const p of cluster) {
         const parents = getParentsArray(p).filter(pid => clusterIds.has(pid));
         if (parents.length >= 2) {
@@ -726,7 +788,6 @@ function buildWholeTreeRows(cluster) {
         }
     }
 
-    // 2. Explicit spouse field (bidirectional)
     for (const p of cluster) {
         if (p.spouse && clusterIds.has(p.spouse)) {
             if (!spouseMap.has(p.id)) spouseMap.set(p.id, new Set());
@@ -746,7 +807,8 @@ function buildWholeTreeRows(cluster) {
     if (!byDepth.size) return [];
     const maxDepth = Math.max(...byDepth.keys());
     const rows = [];
-    for (let d = 1; d <= maxDepth; d++) {
+    // Start from 0 to include anchor at generation 0
+    for (let d = 0; d <= maxDepth; d++) {
         const row = byDepth.get(d) || [];
         const paired = new Set();
         const sorted = [];
@@ -769,6 +831,11 @@ function buildWholeTreeRows(cluster) {
         }
         rows.push(sorted);
     }
+    
+    if (rows.length === 0 && cluster.length > 0) {
+        rows.push(cluster);
+    }
+    
     return rows;
 }
 
@@ -778,7 +845,9 @@ function renderWholeFamilyTree() {
     const clusters  = findFamilyClusters();
 
     if (!clusters.length || clusters.every(c => !c.length)) {
-        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">🌱 No data yet. Add family members to get started.</div>`;
+        container.innerHTML = `<div style="text-align:center;padding:1.5rem;font-size:0.85rem;">
+            🌱 No data yet. The anchor root exists. Use the "＋ Add" button to start building your family tree.
+        </div>`;
         return;
     }
 
@@ -786,19 +855,39 @@ function renderWholeFamilyTree() {
     renderLegend('wholeTreeLegend');
 
     function renderClusterHtml(cluster) {
+        // If cluster has only the anchor, show the special "Add First Member" row
+        if (cluster.length === 1 && cluster[0].id === ANCHOR_ID) {
+            return `<div style="text-align:center;padding:1rem;font-size:0.82rem;color:#888;">
+                        <div class="gen-label">Root (Anchor)</div>
+                        <div class="generation">
+                            ${buildNodeHtml(cluster[0])}
+                            <div class="tree-node add-gen-btn"
+                                 onclick="showFirstMemberModal()">＋ Add First Member</div>
+                        </div>
+                    </div>`;
+        }
+
         const rows = buildWholeTreeRows(cluster);
-        if (!rows.length) return `<div style="text-align:center;padding:1rem;font-size:0.82rem;color:#888;">No members to display in this group yet.</div>`;
+        if (!rows.length) {
+            return `<div style="text-align:center;padding:1rem;font-size:0.82rem;color:#888;">No members to display in this group yet.</div>`;
+        }
 
         let html = `<div class="generations-tree">`;
         rows.forEach((row, idx) => {
             if (!row.length) return;
-            const genNum   = idx + 1;
-            const genLabel = idx === 0 ? '👴👵 Oldest Generation' : `📍 Generation ${genNum}`;
-            const rowIds   = row.map(m => m.id).join(',');
+            const genNum = idx; // 0-based
+            const isAnchorRow = row.some(p => p.id === ANCHOR_ID);
+            const genLabel = isAnchorRow ? 'Root (Anchor)' : `📍 Generation ${genNum}`;
+            const rowIds = row.map(m => m.id).join(',');
+            
             html += `<div class="gen-label">${genLabel}</div><div class="generation">`;
             for (const m of row) html += buildNodeHtml(m);
-            html += `<div class="tree-node add-gen-btn"
-                          onclick="showWholeTreeAddModal(${genNum},'${rowIds}',${idx},${idx===0})">＋ Add</div>`;
+            
+            // Add button only for generations >= 1 (not on the anchor row)
+            if (!isAnchorRow) {
+                html += `<div class="tree-node add-gen-btn"
+                              onclick="showWholeTreeAddModal(${genNum},'${rowIds}',${idx},${idx===1})">＋ Add</div>`;
+            }
             html += `</div>`;
         });
         html += `</div>`;
@@ -825,6 +914,101 @@ function renderWholeFamilyTree() {
     }
 }
 
+// ==============================================================
+// SPECIAL MODAL FOR ADDING THE FIRST REAL MEMBER
+// ==============================================================
+window.showFirstMemberModal = function() {
+    document.getElementById('wholeTreeAddModal')?.remove();
+    
+    const existingFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
+    const fnOpts = existingFamilies.map(fn => `<option value="${fn}">${escapeHtml(fn)}</option>`).join('');
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="wholeTreeAddModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
+             display:flex;align-items:center;justify-content:center;z-index:10000;padding:1rem;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:460px;
+                        width:100%;max-height:90vh;overflow-y:auto;">
+                <h3 style="margin-bottom:0.25rem;">➕ Add First Family Member</h3>
+                <p style="font-size:0.8rem;color:#888;margin-bottom:1rem;">
+                    This will be the first real member of your family tree (Generation 1).
+                </p>
+                <div class="form-group" style="margin-top:0.75rem;">
+                    <label>Full Name *</label>
+                    <input type="text" id="wtName" placeholder="First Last"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                </div>
+                <div class="form-group">
+                    <label>Gender</label>
+                    <select id="wtGender" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                        <option value="unknown">Unknown</option><option value="male">Male</option>
+                        <option value="female">Female</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date of Birth <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <input type="date" id="wtDob" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
+                </div>
+                <div class="form-group">
+                    <label>Family Name <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <select id="wtFamilyNameSelect" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
+                        <option value="">-- Select existing family --</option>${fnOpts}
+                    </select>
+                    <input type="text" id="wtFamilyNameInput" placeholder="Or type a new family name"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.2rem;">Select from dropdown OR type a new name below it.</div>
+                </div>
+                <div id="wtError" style="color:#c33;font-size:0.82rem;margin-top:0.5rem;display:none;"></div>
+                <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+                    <button onclick="submitFirstMember()"
+                            class="submit-btn" style="flex:1;">Add First Member</button>
+                    <button onclick="closeWholeTreeAddModal()"
+                            style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;padding:0.5rem;">Cancel</button>
+                </div>
+            </div>
+        </div>`);
+
+    document.getElementById('wtDob')?.addEventListener('click', function() { this.showPicker(); });
+};
+
+window.submitFirstMember = async function() {
+    const name       = document.getElementById('wtName').value.trim();
+    const gender     = document.getElementById('wtGender').value;
+    const dob        = document.getElementById('wtDob').value;
+    const fnSelect   = document.getElementById('wtFamilyNameSelect').value.trim();
+    const fnInput    = document.getElementById('wtFamilyNameInput').value.trim();
+    const familyName = fnSelect || fnInput || null;
+    const errorDiv   = document.getElementById('wtError');
+
+    const showErr = msg => { errorDiv.textContent = '❌ ' + msg; errorDiv.style.display = 'block'; setTimeout(() => { errorDiv.style.display = 'none'; }, 6000); };
+
+    const nv = validateFullName(name);
+    if (!nv.valid) return showErr(nv.message);
+    if (familyName) await assignColorForFamily(familyName);
+
+    const uid = generateUID(), newId = makePersonId(name, uid);
+
+    try {
+        // First real member: generation 1, no parents, root=true
+        await addPersonToDB({
+            id: newId, uid, name, gender, dob: dob||null,
+            parents: JSON.stringify([]),
+            is_root: true,
+            family_name: familyName,
+            spouse: null,
+            custom_gen: 1 // Force Generation 1 (number)
+        });
+        await loadPeople();           // Reload and refresh generation cache
+        personOwners[newId] = currentUser; savePersonOwners();
+        closeWholeTreeAddModal();
+        showSuccess('contributeSuccessMsg', `✅ "${name}" added as the first family member!`);
+        renderWholeFamilyTree();      // Re‑render with the new member
+        if (isAdmin) await updateAdminPanel();
+    } catch(err) { showErr(`Failed: ${err.message}`); }
+};
+
+// ==============================================================
+// STANDARD WHOLE TREE ADD MODAL (for generations >= 1)
+// ==============================================================
 window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     document.getElementById('wholeTreeAddModal')?.remove();
     const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
@@ -840,8 +1024,13 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     const existingFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
     const fnOpts = existingFamilies.map(fn => `<option value="${fn}">${escapeHtml(fn)}</option>`).join('');
 
-    const aboveNote = isOldest ? `<div style="font-size:0.72rem;color:#856404;background:#fff3cd;padding:0.4rem;border-radius:0.4rem;margin-top:0.3rem;">
-        ⚠️ No generation above. New person will be marked as <strong>root ancestor</strong> automatically.</div>` : '';
+    // Only show "above" if genNum > 1 (i.e., we are not on Generation 1)
+    // Actually, we allow "above" on generation 1 as well, but it places at generation 1 (pushing down)
+    // For generation 1, we show "above" but with special text.
+    const showAbove = true; // Always show "above" for generations >= 1
+    const aboveOptionText = genNum === 1 ? 
+        `⬆️ Above — new person becomes the new root at Generation ${genNum} (existing Gen ${genNum} becomes Gen ${genNum+1})` :
+        `⬆️ Above — new person is a parent of someone in Gen ${genNum}`;
 
     document.body.insertAdjacentHTML('beforeend', `
         <div id="wholeTreeAddModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
@@ -855,7 +1044,7 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
                     <select id="wtPlacement" onchange="wtPlacementChanged(${genNum},${depthIdx},${isOldest})"
                             style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
                         <option value="">-- Choose placement --</option>
-                        <option value="above">⬆️ Above — new person is a parent of someone in Gen ${genNum}</option>
+                        <option value="above">${aboveOptionText}</option>
                         <option value="within">↔️ Within — new person is a sibling at Gen ${genNum}</option>
                         <option value="below">⬇️ Below — new person is a child of someone in Gen ${genNum}</option>
                         <option value="spouse">💑 Spouse — link to existing partner</option>
@@ -900,7 +1089,7 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     window._wtRowIds    = rowIds;
     window._wtAllOpts   = allOpts;
     window._wtRowOpts   = rowOpts;
-    window._wtAboveNote = aboveNote;
+    window._wtAboveNote = '';
     window._wtAllPeople = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name));
 
     const nextGenPeople = FAMILY_DB.people.filter(p => {
@@ -921,38 +1110,35 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
     if (!placement) { section.innerHTML = ''; return; }
 
     if (placement === 'above') {
-        if (isOldest) {
-            section.innerHTML = `${aboveNote}
-                <div class="form-group" style="margin-top:0.75rem; background:#e9f5ff; padding:0.6rem; border-radius:0.5rem;">
-                    <strong>📌 This will make the new person the new root ancestor.</strong><br>
-                    All existing members of the oldest generation (${genNum}) will automatically become children of the new person.
-                </div>`;
-        } else {
-            const aboveCheckboxes = (window._wtRowIds || [])
-                .map(id => { const p = FAMILY_DB.people.find(x => x.id === id); return p ? buildCheckboxRow(p, 'wt-above-child') : ''; })
-                .join('');
-            section.innerHTML = `${aboveNote}
-                <div class="form-group" style="margin-top:0.75rem;">
-                    <label>Their child(ren) from Generation ${genNum} *</label>
-                    <div id="wtAboveChildrenWrap"
-                         style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
-                                max-height:160px;overflow-y:auto;background:white;">
-                        ${aboveCheckboxes || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
-                    </div>
-                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
-                        Tick the members who are children of the new person.
-                        Unticked members stay as roots and are unaffected.
-                    </div>
+        section.innerHTML = `
+            <div class="form-group" style="margin-top:0.75rem; background:#e9f5ff; padding:0.6rem; border-radius:0.5rem;">
+                <strong>📌 This will place the new person at Generation ${genNum}.</strong><br>
+                ${isOldest ? 'The existing members of Generation 1 will become Generation 2.' : `The existing members of Generation ${genNum} will become Generation ${genNum + 1}.`}
+                <br><small style="color:#888;">The anchor at Generation 0 remains untouched.</small>
+            </div>
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label>Their child(ren) from Generation ${genNum} *</label>
+                <div id="wtAboveChildrenWrap"
+                     style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
+                            max-height:160px;overflow-y:auto;background:white;">
+                    ${(window._wtRowIds || []).map(id => { 
+                        const p = FAMILY_DB.people.find(x => x.id === id); 
+                        return p ? buildCheckboxRow(p, 'wt-above-child') : ''; 
+                    }).join('') || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
                 </div>
-                <div class="form-group" style="margin-top:0.75rem;">
-                    <label>➕ Add new children (comma‑separated full names)</label>
-                    <input type="text" id="wtNewChildrenNames" placeholder="e.g. John Smith, Jane Doe"
-                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
-                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
-                        New persons will be created with the same family name as the new person above.
-                    </div>
-                </div>`;
-        }
+                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                    Tick the members who are children of the new person.
+                    Unticked members stay at their current generation.
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label>➕ Add new children (comma‑separated full names)</label>
+                <input type="text" id="wtNewChildrenNames" placeholder="e.g. John Smith, Jane Doe"
+                       style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
+                <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
+                    New persons will be created with the same family name as the new person above.
+                </div>
+            </div>`;
     } else if (placement === 'within') {
         const allNameOpts = [...FAMILY_DB.people].sort((a,b) => a.name.localeCompare(b.name))
             .map(p => `<option value="${escapeHtml(p.name)}">`).join('');
@@ -1045,87 +1231,79 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
     try {
         let parentsArray = [];
         let isRoot = false;
+        let customGen = null;
         let spouseId = null;
 
         if (placement === 'above') {
-            if (isOldest) {
-                const allRootIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
-                if (allRootIds.length === 0) return showErr('No root members found to attach above.');
-                parentsArray = [];
-                isRoot = true;
+            // For "above" on any generation >= 1:
+            // The new person goes to the same generation as the row, pushing existing down
+            const targetGen = depthIdx; // depthIdx is 0-based, but generation is depthIdx (since gen 0 is anchor)
+            customGen = targetGen;
+            
+            const selectedChildren = Array.from(
+                document.querySelectorAll('.wt-above-child:checked') || []
+            ).map(o => o.value).filter(Boolean);
+
+            const newChildrenInput = document.getElementById('wtNewChildrenNames')?.value.trim() || '';
+            const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
+            const newChildIds = [];
+
+            // New children will be placed one generation below the new person
+            const childGen = customGen + 1;
+            for (const childName of newChildNames) {
+                const childUid = generateUID();
+                const childId = makePersonId(childName, childUid);
                 await addPersonToDB({
-                    id: newId, uid, name, gender, dob: dob||null,
-                    parents: JSON.stringify(parentsArray),
-                    is_root: isRoot,
+                    id: childId, uid: childUid, name: childName,
+                    gender: 'unknown', dob: null,
+                    parents: JSON.stringify([newId]),
+                    is_root: false,
                     family_name: familyName,
                     spouse: null,
-                    custom_gen: null  // no override
+                    custom_gen: childGen
                 });
-                for (const rootId of allRootIds) {
-                    const rootPerson = FAMILY_DB.people.find(p => p.id === rootId);
-                    if (!rootPerson) continue;
-                    const updatedParents = [...new Set([...getParentsArray(rootPerson), newId])];
-                    await updatePersonInDB(rootId, {
-                        parents: JSON.stringify(updatedParents),
-                        is_root: false
+                newChildIds.push(childId);
+                personOwners[childId] = currentUser;
+            }
+
+            // Create the new person at the target generation
+            parentsArray = [];
+            isRoot = false; // Not a root in the traditional sense, but they become the new "root" of the tree
+            await addPersonToDB({
+                id: newId, uid, name, gender, dob: dob||null,
+                parents: JSON.stringify(parentsArray),
+                is_root: true,
+                family_name: familyName,
+                spouse: null,
+                custom_gen: customGen
+            });
+
+            // Update selected children to have the new person as parent
+            for (const memberId of selectedChildren) {
+                const member = FAMILY_DB.people.find(p => p.id === memberId);
+                if (member) {
+                    const updatedParents = [...new Set([...getParentsArray(member), newId])];
+                    await updatePersonInDB(member.id, { 
+                        parents: JSON.stringify(updatedParents), 
+                        is_root: false 
                     });
-                }
-            } else {
-                const selectedChildren = Array.from(
-                    document.querySelectorAll('.wt-above-child:checked') || []
-                ).map(o => o.value).filter(Boolean);
-
-                const newChildrenInput = document.getElementById('wtNewChildrenNames')?.value.trim() || '';
-                const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
-                const newChildIds = [];
-
-                for (const childName of newChildNames) {
-                    const childUid = generateUID();
-                    const childId = makePersonId(childName, childUid);
-                    await addPersonToDB({
-                        id: childId, uid: childUid, name: childName,
-                        gender: 'unknown', dob: null,
-                        parents: JSON.stringify([newId]),
-                        is_root: false,
-                        family_name: familyName,
-                        spouse: null,
-                        custom_gen: null
-                    });
-                    newChildIds.push(childId);
-                    personOwners[childId] = currentUser;
-                }
-
-                parentsArray = [];
-                isRoot = true;
-                await addPersonToDB({
-                    id: newId, uid, name, gender, dob: dob||null,
-                    parents: JSON.stringify(parentsArray),
-                    is_root: isRoot,
-                    family_name: familyName,
-                    spouse: null,
-                    custom_gen: null
-                });
-
-                for (const memberId of selectedChildren) {
-                    const member = FAMILY_DB.people.find(p => p.id === memberId);
-                    if (member) {
-                        const updatedParents = [...new Set([...getParentsArray(member), newId])];
-                        await updatePersonInDB(member.id, { parents: JSON.stringify(updatedParents), is_root: false });
-                    }
-                }
-
-                const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
-                const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
-                for (const uid2 of unselected) {
-                    const member = FAMILY_DB.people.find(p => p.id === uid2);
-                    if (!member) continue;
-                    const existingParents = getParentsArray(member);
-                    const hasRealParent = existingParents.some(pid => FAMILY_DB.people.find(p => p.id === pid));
-                    if (!hasRealParent) {
-                        await updatePersonInDB(uid2, { parents: JSON.stringify(['__na__']), is_root: false });
-                    }
                 }
             }
+
+            // For unselected members, they stay at their current generation
+            // but we need to make sure they're not marked as roots if they have no parents
+            const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
+            const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
+            for (const uid2 of unselected) {
+                const member = FAMILY_DB.people.find(p => p.id === uid2);
+                if (!member) continue;
+                const existingParents = getParentsArray(member);
+                const hasRealParent = existingParents.some(pid => FAMILY_DB.people.find(p => p.id === pid));
+                if (!hasRealParent) {
+                    await updatePersonInDB(uid2, { parents: JSON.stringify(['__na__']), is_root: false });
+                }
+            }
+
         } else if (placement === 'within') {
             const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
             const p1Text = document.getElementById('wtParent1Text')?.value.trim() || '';
@@ -1170,12 +1348,12 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     await addPersonToDB({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: JSON.stringify([]), is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: null
+                        spouse: null, custom_gen: depthIdx + 2
                     });
                     FAMILY_DB.people.push({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: '[]', is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: null
+                        spouse: null, custom_gen: depthIdx + 2
                     });
                     newChild = { id: nid, name: newChildName };
                 }
@@ -1199,6 +1377,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
 
             parentsArray = parentIds.length > 0 ? parentIds : ['__nc__'];
             isRoot = (parentsArray.length === 0);
+            customGen = depthIdx; // same generation as the row
 
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
@@ -1206,7 +1385,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: null,
-                custom_gen: null
+                custom_gen: customGen
             });
 
             for (const cid of childLinks) {
@@ -1217,6 +1396,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     });
                 }
             }
+
         } else if (placement === 'below') {
             const pl1 = document.getElementById('wtParentLink1')?.value || '';
             const pl2 = document.getElementById('wtParentLink2')?.value || '';
@@ -1225,14 +1405,16 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (pl2 && pl2 !== pl1) parentIds.push(pl2);
             parentsArray = parentIds;
             isRoot = false;
+            customGen = depthIdx + 1; // one generation below
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: null,
-                custom_gen: null
+                custom_gen: customGen
             });
+
         } else if (placement === 'spouse') {
             const partnerId = document.getElementById('wtSpousePartner')?.value;
             if (!partnerId) return showErr('Please select a partner.');
@@ -1241,13 +1423,14 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             spouseId = partnerId;
             parentsArray = [];
             isRoot = false;
+            customGen = null; // let BFS sync via spouse edge
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: spouseId,
-                custom_gen: null
+                custom_gen: customGen
             });
             await updatePersonInDB(partnerId, { spouse: newId });
         }
@@ -1426,7 +1609,7 @@ window.closeLineageModal = function() { document.getElementById('lineageModal')?
 window.handleNodeClick = function(personId) { showLineageModal(personId); };
 
 // ==============================================================
-// EDIT MODAL (Move to Generation feature REMOVED)
+// EDIT MODAL
 // ==============================================================
 function showEditModal(person) {
     if (!person) return;
@@ -1436,8 +1619,6 @@ function showEditModal(person) {
     const fnDatalist = existingFamilies.map(fn => `<option value="${escapeHtml(fn)}">`).join('');
 
     const allPeople = [...FAMILY_DB.people].filter(p => p.id !== person.id).sort((a,b) => a.name.localeCompare(b.name));
-
-    // Build datalist options with NAME as value (display)
     const allPeopleOpts = allPeople.map(p => `<option value="${escapeHtml(p.name)}">`).join('');
 
     const currentParents = getParentsArray(person).map(pid => findPersonById(pid)).filter(Boolean);
@@ -1494,7 +1675,6 @@ function showEditModal(person) {
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
                     <datalist id="editFamilyList">${fnDatalist}</datalist>
                 </div>
-                <!-- Move to Generation dropdown REMOVED -->
                 <div class="form-group">
                     <label>Spouse <span style="font-weight:400;color:#888;">(link to partner)</span></label>
                     <select id="editSpouse" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;">
@@ -1558,7 +1738,6 @@ window.editRemoveParent = function(parentId) {
     const person = findPersonById(personId);
     if (!person) return;
 
-    // 1. Check edited person's isolation after removal
     const currentParents = window._editParents || [];
     const newParents = currentParents.filter(id => id !== parentId);
     const children = window._editChildren || [];
@@ -1569,13 +1748,11 @@ window.editRemoveParent = function(parentId) {
         return;
     }
 
-    // 2. Check the removed parent's isolation after losing this child
     if (wouldPersonBeIsolatedAfterRemovingChild(parentId, personId)) {
         alert('⚠️ The parent "' + (findPersonById(parentId)?.name || parentId) + '" would become disconnected from the family tree. Please connect them to someone else first before removing this link.');
         return;
     }
 
-    // Proceed with removal
     window._editParents = newParents;
     const tag = document.querySelector(`#editParentTags button[onclick="editRemoveParent('${parentId}')"]`)?.parentElement;
     if (tag) tag.remove();
@@ -1590,7 +1767,6 @@ window.editRemoveChild = function(childId) {
     const person = findPersonById(personId);
     if (!person) return;
 
-    // 1. Check edited person's isolation after removal
     const currentChildren = window._editChildren || [];
     const newChildren = currentChildren.filter(id => id !== childId);
     const parents = window._editParents || [];
@@ -1601,13 +1777,11 @@ window.editRemoveChild = function(childId) {
         return;
     }
 
-    // 2. Check the removed child's isolation after losing this parent
     if (wouldPersonBeIsolatedAfterRemovingParent(childId, personId)) {
         alert('⚠️ The child "' + (findPersonById(childId)?.name || childId) + '" would become disconnected from the family tree. Please connect them to someone else first before removing this link.');
         return;
     }
 
-    // Proceed with removal
     window._editChildren = newChildren;
     const tag = document.querySelector(`#editChildTags button[onclick="editRemoveChild('${childId}')"]`)?.parentElement;
     if (tag) tag.remove();
@@ -1626,8 +1800,22 @@ window.editAddParent = async function(personId) {
         const v = validateFullName(name);
         if (!v.valid) { alert(v.message); return; }
         const nuid = generateUID(), nid = makePersonId(name, nuid);
-        await addPersonToDB({ id: nid, uid: nuid, name, gender: 'unknown', parents: JSON.stringify([]), is_root: true, family_name: null, spouse: null, custom_gen: null });
-        FAMILY_DB.people.push({ id: nid, uid: nuid, name, gender: 'unknown', parents: '[]', is_root: true, family_name: null, spouse: null, custom_gen: null });
+        await addPersonToDB({ 
+            id: nid, uid: nuid, name, gender: 'unknown', 
+            parents: JSON.stringify([]), 
+            is_root: true, 
+            family_name: null, 
+            spouse: null, 
+            custom_gen: null 
+        });
+        FAMILY_DB.people.push({ 
+            id: nid, uid: nuid, name, gender: 'unknown', 
+            parents: '[]', 
+            is_root: true, 
+            family_name: null, 
+            spouse: null, 
+            custom_gen: null 
+        });
         parentObj = { id: nid, name };
     }
     if ((window._editParents || []).includes(parentObj.id)) { alert('Already added.'); return; }
@@ -1654,8 +1842,31 @@ window.editAddChild = async function(personId) {
         const v = validateFullName(name);
         if (!v.valid) { alert(v.message); return; }
         const nuid = generateUID(), nid = makePersonId(name, nuid);
-        await addPersonToDB({ id: nid, uid: nuid, name, gender: 'unknown', parents: JSON.stringify([personId]), is_root: false, family_name: null, spouse: null, custom_gen: null });
-        FAMILY_DB.people.push({ id: nid, uid: nuid, name, gender: 'unknown', parents: JSON.stringify([personId]), is_root: false, family_name: null, spouse: null, custom_gen: null });
+        
+        const parent = findPersonById(personId);
+        const parentRawParents = getRawParentsArray(parent);
+        let parentsArray = [personId];
+        
+        if (parentRawParents.includes('__nc__')) {
+            parentsArray.push('__nc__');
+        }
+        
+        await addPersonToDB({ 
+            id: nid, uid: nuid, name, gender: 'unknown', 
+            parents: JSON.stringify(parentsArray), 
+            is_root: false, 
+            family_name: null, 
+            spouse: null, 
+            custom_gen: null 
+        });
+        FAMILY_DB.people.push({ 
+            id: nid, uid: nuid, name, gender: 'unknown', 
+            parents: JSON.stringify(parentsArray), 
+            is_root: false, 
+            family_name: null, 
+            spouse: null, 
+            custom_gen: null 
+        });
         childObj = { id: nid, name };
     }
     if ((window._editChildren || []).includes(childObj.id)) { alert('Already added.'); return; }
@@ -1690,13 +1901,11 @@ window.saveEdit = async function(personId) {
     const oldPerson = findPersonById(personId);
     if (!oldPerson) { alert('Person not found'); return; }
 
-    // 1. Check isolation of the edited person
     if (wouldBeIsolated(personId, newParents, Array.from(desiredChildren), spouseId || null)) {
         alert('⚠️ This edit would make the person disconnected from the family tree. Please ensure they have at least one parent, child, or spouse.');
         return;
     }
 
-    // 2. Check isolation of removed parents (people who lose this person as a child)
     const oldParents = getParentsArray(oldPerson);
     const removedParents = oldParents.filter(id => !newParents.includes(id));
     for (const removedParentId of removedParents) {
@@ -1707,7 +1916,6 @@ window.saveEdit = async function(personId) {
         }
     }
 
-    // 3. Check isolation of removed children (people who lose this person as a parent)
     const oldChildrenIds = FAMILY_DB.people.filter(p => getParentsArray(p).includes(personId)).map(p => p.id);
     const removedChildren = oldChildrenIds.filter(id => !desiredChildren.has(id));
     for (const removedChildId of removedChildren) {
@@ -1718,7 +1926,6 @@ window.saveEdit = async function(personId) {
         }
     }
 
-    // 4. Check isolation of old spouse if we are changing spouse
     const oldSpouseId = oldPerson.spouse || null;
     if (oldSpouseId && oldSpouseId !== spouseId) {
         if (wouldPersonBeIsolatedAfterRemovingSpouse(oldSpouseId, personId)) {
@@ -1728,7 +1935,6 @@ window.saveEdit = async function(personId) {
         }
     }
 
-    // All checks passed – proceed with save
     const updates = { 
         name, 
         gender, 
@@ -1736,19 +1942,16 @@ window.saveEdit = async function(personId) {
         spouse: spouseId || null,
         parents: JSON.stringify(newParents.length ? newParents : []),
         is_root: newParents.length === 0
-        // custom_gen is intentionally omitted – we never update it
     };
     if (dob) updates.dob = dob;
 
     try {
-        // Handle old spouse removal (if any)
         if (oldSpouseId && oldSpouseId !== spouseId) {
             const oldSpouse = findPersonById(oldSpouseId);
             if (oldSpouse && oldSpouse.spouse === personId) {
                 await updatePersonInDB(oldSpouse.id, { spouse: null });
             }
         }
-        // Link new spouse
         if (spouseId) {
             const partner = findPersonById(spouseId);
             if (partner && partner.spouse !== personId) {
@@ -1758,18 +1961,20 @@ window.saveEdit = async function(personId) {
 
         await updatePersonInDB(personId, updates);
 
-        // Update children
         for (const child of oldChildrenIds) {
             if (!desiredChildren.has(child)) {
-                const updatedParents = getParentsArray(findPersonById(child)).filter(pid => pid !== personId);
-                await updatePersonInDB(child, { parents: JSON.stringify(updatedParents) });
+                const childObj = findPersonById(child);
+                if (childObj) {
+                    const updatedParents = getRawParentsArray(childObj).filter(pid => pid !== personId);
+                    await updatePersonInDB(child, { parents: JSON.stringify(updatedParents) });
+                }
             }
         }
         for (const childId of desiredChildren) {
             if (!oldChildrenIds.includes(childId)) {
                 const child = findPersonById(childId);
                 if (child) {
-                    const existingParents = getParentsArray(child);
+                    const existingParents = getRawParentsArray(child);
                     if (!existingParents.includes(personId)) {
                         await updatePersonInDB(childId, {
                             parents: JSON.stringify([...existingParents, personId]),
@@ -1795,90 +2000,12 @@ window.findPersonById = findPersonById;
 window.showEditModal = showEditModal;
 
 // ==============================================================
-// CONTRIBUTE
+// CONTRIBUTE – DISABLED (replaced by "+ Add" button)
 // ==============================================================
-async function addOrGetPerson(nameOrRef, gender = 'unknown', familyName = null) {
-    if (!nameOrRef) return null;
-    const isRef = typeof nameOrRef === 'object';
-    const name  = isRef ? nameOrRef.name : nameOrRef;
-    const existingId = isRef ? nameOrRef.id : null;
-    if (existingId) return findPersonById(existingId);
-    if (familyName) await assignColorForFamily(familyName);
-    const v = validateFullName(name);
-    if (!v.valid) throw new Error(v.message);
-    const exactMatches = findPeopleByName(name);
-    if (exactMatches.length === 1) return exactMatches[0];
-    const uid = generateUID(), newId = makePersonId(name, uid);
-    await addPersonToDB({
-        id: newId, uid, name, gender,
-        parents: JSON.stringify([]),
-        is_root: false,
-        family_name: familyName,
-        spouse: null,
-        custom_gen: null
-    });
-    return { id: newId, uid, name, gender, parents: '[]', is_root: false, family_name: familyName, spouse: null, custom_gen: null };
-}
-
 async function contributeToTree(event) {
     event.preventDefault();
-    const userName         = document.getElementById('userFullName').value.trim();
-    const userGender       = document.getElementById('userGender').value;
-    const userDob          = document.getElementById('userDob')?.value || null;
-    const fatherRef        = getParentValue('father');
-    const motherRef        = getParentValue('mother');
-    const familyName       = getFamilyNameValue() || null;
-    const fatherFamilyName = getParentFamilyName('father') || familyName;
-    const motherFamilyName = getParentFamilyName('mother') || familyName;
-
-    const uv = validateFullName(userName);
-    if (!uv.valid) { showError('contributeErrorMsg', `Your name: ${uv.message}`); return; }
-
-    if (!familyName) {
-        showError('contributeErrorMsg', '⚠️ Family name is required. Please select an existing family or type a new one.');
-        return;
-    }
-
-    showSuccess('contributeSuccessMsg', 'Adding to the family tree…');
-
-    try {
-        await assignColorForFamily(familyName);
-        if (fatherFamilyName) await assignColorForFamily(fatherFamilyName);
-        if (motherFamilyName) await assignColorForFamily(motherFamilyName);
-
-        let parentIds = [];
-        if (fatherRef) {
-            const father = await addOrGetPerson(fatherRef, 'male', fatherFamilyName);
-            if (father) parentIds.push(father.id);
-        }
-        if (motherRef) {
-            const mother = await addOrGetPerson(motherRef, 'female', motherFamilyName);
-            if (mother) parentIds.push(mother.id);
-        }
-        const uid = generateUID(), newId = makePersonId(userName, uid);
-
-        // If no parents, use __nc__ to place at bottom
-        const parentsArray = parentIds.length ? parentIds : ['__nc__'];
-
-        await addPersonToDB({
-            id: newId, uid, name: userName, gender: userGender, dob: userDob,
-            parents: JSON.stringify(parentsArray),
-            is_root: parentIds.length === 0,
-            family_name: familyName,
-            spouse: null,
-            custom_gen: null
-        });
-        await loadPeople();
-        personOwners[newId] = currentUser; savePersonOwners();
-        document.getElementById('contributeForm').reset();
-        ['fatherName','motherName'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
-        ['familyNameInput','fatherName','motherName','fatherFamilyNameInput','motherFamilyNameInput'].forEach(id => {
-            const el = document.getElementById(id); if (el) el.value = '';
-        });
-        showSuccess('contributeSuccessMsg', `Added "${userName}" [#${uid}]`);
-        if (isAdmin) await updateAdminPanel();
-        renderWholeFamilyTree();
-    } catch(e) { showError('contributeErrorMsg', `Failed: ${e.message}`); }
+    showError('contributeErrorMsg', '⚠️ The "Add Your Details" form is disabled. Please use the "＋ Add" button in the Whole Family Tree view to add new members.');
+    return;
 }
 
 // ==============================================================
@@ -2090,9 +2217,14 @@ window.deleteSelectedHandler = async function() {
         async () => {
             try {
                 for (const id of checked) {
+                    if (id === ANCHOR_ID) {
+                        alert('⚠️ The anchor member cannot be deleted.');
+                        continue;
+                    }
                     await removePersonFromAllRelations(id);
                 }
                 for (const id of checked) {
+                    if (id === ANCHOR_ID) continue;
                     await apiFetch(`people?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
                     delete personOwners[id];
                 }
@@ -2107,14 +2239,19 @@ window.deleteSelectedHandler = async function() {
 window.deleteAllHandler = async function() {
     if (!isAdmin) { alert('Admins only.'); return; }
     if (!FAMILY_DB.people.length) { alert('Nothing to delete.'); return; }
+    
+    const nonAnchorMembers = FAMILY_DB.people.filter(p => p.id !== ANCHOR_ID);
+    if (!nonAnchorMembers.length) {
+        alert('⚠️ Only the anchor member exists. The anchor is permanent and cannot be deleted.');
+        return;
+    }
+    
     showConfirmModal(
-        `⚠️ Delete <strong>ALL ${FAMILY_DB.people.length} members</strong> and ALL family colors?<br>This will wipe the entire tree and <strong>cannot be undone</strong>.`,
+        `⚠️ Delete <strong>ALL ${nonAnchorMembers.length} non-anchor members</strong> and ALL family colors?<br>This will wipe the entire tree except the permanent anchor and <strong>cannot be undone</strong>.`,
         async () => {
             try {
-                for (const person of FAMILY_DB.people) {
+                for (const person of nonAnchorMembers) {
                     await updatePersonInDB(person.id, { parents: JSON.stringify([]), is_root: true });
-                }
-                for (const person of [...FAMILY_DB.people]) {
                     await apiFetch(`people?id=${encodeURIComponent(person.id)}`, { method: 'DELETE' });
                     delete personOwners[person.id];
                 }
@@ -2124,7 +2261,7 @@ window.deleteAllHandler = async function() {
                 await loadPeople();
                 if (isAdmin) await updateAdminPanel();
                 renderWholeFamilyTree();
-                alert('All data deleted successfully.');
+                alert('All non-anchor members deleted successfully.');
             } catch(e) { alert(`Failed: ${e.message}`); }
         }
     );
@@ -2132,9 +2269,21 @@ window.deleteAllHandler = async function() {
 
 window.deletePersonHandler = async function(personId) {
     if (!isAdmin) { alert('Admins only.'); return; }
-    const p = findPersonById(personId); if (!p) return;
+    const p = findPersonById(personId);
+    if (!p) return;
+    
+    if (personId === ANCHOR_ID) {
+        alert('⚠️ The anchor member is permanent and cannot be deleted. It serves as the root of the entire family tree.');
+        return;
+    }
+    
     if (confirm(`Delete "${p.name}" [#${p.uid||''}]? This removes them from all relationships.`)) {
-        try { await deletePersonFromDB(personId); await updateAdminPanel(); renderWholeFamilyTree(); alert('Deleted.'); }
+        try { 
+            await deletePersonFromDB(personId); 
+            await updateAdminPanel(); 
+            renderWholeFamilyTree(); 
+            alert('Deleted.'); 
+        }
         catch(e) { alert(`Failed: ${e.message}`); }
     }
 };
@@ -2185,6 +2334,7 @@ async function init() {
     try {
         await loadFamilyColors();
         await loadPeople();
+        await ensureAnchorExists();
         await ensurePlaceholderExists();
         setupAutocomplete('fatherName', (name, family) => onPersonAutocomplete(name, family, 'fatherFamilyNameInput'));
         setupAutocomplete('motherName', (name, family) => onPersonAutocomplete(name, family, 'motherFamilyNameInput'));

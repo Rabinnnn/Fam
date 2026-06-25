@@ -279,14 +279,15 @@
 
     <!-- TABS -->
     <div class="tabs">
-        <button class="tab-btn active" data-tab="contribute">✍️ Add Your Details</button>
-        <button class="tab-btn"        data-tab="lineage">🔍 View Lineage</button>
-        <button class="tab-btn"        data-tab="wholetree">🌳 Whole Family Tree</button>
-        <button class="tab-btn"        data-tab="admin" id="adminTabBtn" style="display:none;">👑 Admin Panel</button>
+        <!-- ADD YOUR DETAILS TAB IS DISABLED (commented out) -->
+        <!-- <button class="tab-btn active" data-tab="contribute">✍️ Add Your Details</button> -->
+        <button class="tab-btn active" data-tab="wholetree">🌳 Whole Family Tree</button>
+        <button class="tab-btn" data-tab="lineage">🔍 View Lineage</button>
+        <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display:none;">👑 Admin Panel</button>
     </div>
 
-    <!-- TAB 1 — ADD YOUR DETAILS -->
-    <div id="contributeTab" class="tab-content active">
+    <!-- TAB 1 — ADD YOUR DETAILS (DISABLED) -->
+    <div id="contributeTab" class="tab-content" style="display:none;">
         <div class="contribute-section">
             <h3 style="font-size:1.1rem;margin-bottom:0.4rem;">🌱 Add Yourself to the Family Tree</h3>
             <p style="font-size:0.8rem;margin-bottom:1rem;color:#7a5c3a;">
@@ -412,7 +413,7 @@
     </div>
 
     <!-- TAB 3 — WHOLE FAMILY TREE -->
-    <div id="wholetreeTab" class="tab-content">
+    <div id="wholetreeTab" class="tab-content active">
         <div class="search-section" style="display:flex;align-items:center;
              justify-content:space-between;flex-wrap:wrap;gap:0.5rem;padding:0.75rem 1rem;">
             <div>
