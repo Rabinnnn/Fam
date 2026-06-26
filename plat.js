@@ -119,13 +119,17 @@ async function loadPeople() {
 }
 
 async function addPersonToDB(person) {
-    await apiFetch('people', { method: 'POST', body: JSON.stringify(person) });
+    // Remove custom_gen if present
+    const { custom_gen, ...cleanPerson } = person;
+    await apiFetch('people', { method: 'POST', body: JSON.stringify(cleanPerson) });
     if (!personOwners[person.id]) { personOwners[person.id] = currentUser; savePersonOwners(); }
     return true;
 }
 
 async function updatePersonInDB(personId, updates) {
-    await apiFetch(`people?id=${encodeURIComponent(personId)}`, { method: 'PATCH', body: JSON.stringify(updates) });
+    // Remove custom_gen if present
+    const { custom_gen, ...cleanUpdates } = updates;
+    await apiFetch(`people?id=${encodeURIComponent(personId)}`, { method: 'PATCH', body: JSON.stringify(cleanUpdates) });
     return true;
 }
 
@@ -245,7 +249,7 @@ async function ensurePlaceholderExists() {
                 id: '__na__', uid: '__na__', name: 'N/A',
                 gender: 'unknown', parents: '[]',
                 is_root: false, family_name: null,
-                spouse: null, custom_gen: null
+                spouse: null
             });
             console.log('✅ __na__ placeholder created');
         }
@@ -474,7 +478,6 @@ function computeGenerations() {
         }
     }
 
-    // BFS propagation for children and spouses
     while (queue.length) {
         const pid = queue.shift();
         const currentGen = gen.get(pid);
@@ -501,16 +504,6 @@ function computeGenerations() {
                 const newGen = Math.max(gen.get(spouseId), currentGen);
                 gen.set(spouseId, newGen);
                 queue.push(spouseId);
-            }
-        }
-    }
-
-    // Override with custom_gen
-    for (const p of FAMILY_DB.people) {
-        if (p.custom_gen !== null && p.custom_gen !== undefined) {
-            const genVal = parseInt(p.custom_gen, 10);
-            if (!isNaN(genVal)) {
-                gen.set(p.id, genVal);
             }
         }
     }
@@ -569,6 +562,10 @@ function populateFamilyNameDropdown() {
         opt.value = fn;
         dl.appendChild(opt);
     });
+}
+
+function hasExistingMembers() {
+    return FAMILY_DB.people.length > 0;
 }
 
 // ==============================================================
@@ -911,8 +908,7 @@ window.submitFirstMember = async function() {
             parents: JSON.stringify([]),
             is_root: true,
             family_name: familyName,
-            spouse: null,
-            custom_gen: null // BFS will set generation 1
+            spouse: null
         });
         await loadPeople();
         personOwners[newId] = currentUser; savePersonOwners();
@@ -941,7 +937,7 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     const existingFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
     const fnOpts = existingFamilies.map(fn => `<option value="${fn}">${escapeHtml(fn)}</option>`).join('');
 
-    const aboveOptionText = `⬆️ Above — new person becomes a parent of someone in Gen ${genNum}`;
+    const aboveOptionText = `⬆️ Above — new person becomes a parent of selected members in Gen ${genNum}`;
 
     document.body.insertAdjacentHTML('beforeend', `
         <div id="wholeTreeAddModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
@@ -1021,20 +1017,24 @@ window.wtPlacementChanged = function(genNum, depthIdx, isOldest) {
     if (!placement) { section.innerHTML = ''; return; }
 
     if (placement === 'above') {
+        // Show checkboxes for all members in the generation – user selects which become children
+        const allCheckboxes = (window._wtRowIds || []).map(id => {
+            const p = FAMILY_DB.people.find(x => x.id === id);
+            return p ? buildCheckboxRow(p, 'wt-above-child') : '';
+        }).join('');
+
         section.innerHTML = `
             <div class="form-group" style="margin-top:0.75rem; background:#e9f5ff; padding:0.6rem; border-radius:0.5rem;">
-                <strong>📌 This will place the new person at Generation ${genNum-1} (above the selected row).</strong><br>
-                The new person becomes a parent of the selected members, and will have no parents of their own.
+                <strong>📌 This will place the new person above Generation ${genNum}.</strong><br>
+                Select which members of Generation ${genNum} will become children of the new person.
+                Selected members (and their descendants) will shift down one generation.
             </div>
             <div class="form-group" style="margin-top:0.75rem;">
-                <label>Their child(ren) from Generation ${genNum} *</label>
+                <label>Children (select members from Generation ${genNum})</label>
                 <div id="wtAboveChildrenWrap"
                      style="border:1px solid #ccc;border-radius:0.5rem;padding:0.4rem 0.25rem;
                             max-height:160px;overflow-y:auto;background:white;">
-                    ${(window._wtRowIds || []).map(id => { 
-                        const p = FAMILY_DB.people.find(x => x.id === id); 
-                        return p ? buildCheckboxRow(p, 'wt-above-child') : ''; 
-                    }).join('') || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
+                    ${allCheckboxes || '<div style="padding:0.5rem;color:#888;font-size:0.8rem;">No members found</div>'}
                 </div>
                 <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">
                     Tick the members who will become children of the new person.
@@ -1141,27 +1141,20 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
     try {
         let parentsArray = [];
         let isRoot = false;
-        let customGen = null;
         let spouseId = null;
 
         if (placement === 'above') {
-            // New person becomes a parent of selected members – they will be placed at generation depthIdx (i.e., one level above the row)
-            const targetGen = depthIdx === 0 ? 1 : depthIdx; // if we are on gen 1, above is gen 1 (since there is no gen 0)
-            // Actually, above on generation 1 should place at generation 1 (the new root)
-            // For generation >1, above should place at depthIdx (one less than current)
-            // So: if depthIdx === 0, we place at 1; else place at depthIdx
-            customGen = depthIdx === 0 ? 1 : depthIdx;
-            
+            // Selected children from the modal (checkboxes)
             const selectedChildren = Array.from(
                 document.querySelectorAll('.wt-above-child:checked') || []
             ).map(o => o.value).filter(Boolean);
 
+            // New children typed by user (comma-separated)
             const newChildrenInput = document.getElementById('wtNewChildrenNames')?.value.trim() || '';
             const newChildNames = newChildrenInput.split(',').map(s => s.trim()).filter(s => s);
             const newChildIds = [];
 
-            // New children will be placed one generation below the new person
-            const childGen = customGen + 1;
+            // Add new children (they will be created as children of the new person)
             for (const childName of newChildNames) {
                 const childUid = generateUID();
                 const childId = makePersonId(childName, childUid);
@@ -1171,30 +1164,24 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     parents: JSON.stringify([newId]),
                     is_root: false,
                     family_name: familyName,
-                    spouse: null,
-                    custom_gen: childGen
+                    spouse: null
                 });
                 newChildIds.push(childId);
                 personOwners[childId] = currentUser;
             }
 
-            // Create the new person at the target generation
-            parentsArray = [];
-            isRoot = false; // They have no parents, but we set is_root: true because they are a root (no parents) – actually BFS will treat them as root if parents empty.
-            // But we will set is_root: true to mark them as root
-            isRoot = true;
+            // Create the new person (no parents, so they become a root at generation 1)
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
-                parents: JSON.stringify(parentsArray),
+                parents: JSON.stringify([]),
                 is_root: true,
                 family_name: familyName,
-                spouse: null,
-                custom_gen: customGen
+                spouse: null
             });
 
-            // Update selected children to have the new person as parent
+            // Update selected existing children to have the new person as parent
             for (const memberId of selectedChildren) {
-                const member = FAMILY_DB.people.find(p => p.id === memberId);
+                const member = findPersonById(memberId);
                 if (member) {
                     const updatedParents = [...new Set([...getParentsArray(member), newId])];
                     await updatePersonInDB(member.id, { 
@@ -1204,11 +1191,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 }
             }
 
-            // For unselected members, they stay at their current generation
-            // but we need to make sure they're not marked as roots if they have no parents (they might be roots already)
-            const allRowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
-            const unselected = allRowIds.filter(id => !selectedChildren.includes(id));
-            // No need to change anything for unselected; they keep their existing parents.
+            // New children already have the new person as parent, so no extra step needed.
 
         } else if (placement === 'within') {
             const siblingRefId = document.getElementById('wtSiblingRef')?.value || '';
@@ -1229,8 +1212,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                     parents: JSON.stringify([]),
                     is_root: true,
                     family_name: familyName,
-                    spouse: null,
-                    custom_gen: null
+                    spouse: null
                 });
                 return { id: nid, name: text };
             };
@@ -1251,21 +1233,15 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
                 if (!newChild) {
                     const nuid = generateUID();
                     const nid = makePersonId(newChildName, nuid);
-                    // New child will be placed one generation below the new person (which is at depthIdx+1)
-                    // So child's gen = depthIdx + 2? Actually: new person will be at depthIdx+1, so child at depthIdx+2.
-                    // But we don't know the new person's gen yet. We'll set it after we create the new person.
-                    // For now, we create the child later after the new person is created, and we'll set its custom_gen accordingly.
-                    // We'll handle this after creating the new person.
-                    // For simplicity, we'll create the child now with custom_gen = depthIdx + 2.
                     await addPersonToDB({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: JSON.stringify([]), is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: depthIdx + 2
+                        spouse: null
                     });
                     FAMILY_DB.people.push({
                         id: nid, uid: nuid, name: newChildName, gender: 'unknown',
                         parents: '[]', is_root: true, family_name: familyName,
-                        spouse: null, custom_gen: depthIdx + 2
+                        spouse: null
                     });
                     newChild = { id: nid, name: newChildName };
                 }
@@ -1276,39 +1252,40 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (p1) parentIds.push(p1);
             if (p2 && p2 !== p1) parentIds.push(p2);
             if (!parentIds.length && siblingRefId) {
-                const sib = FAMILY_DB.people.find(p => p.id === siblingRefId);
+                const sib = findPersonById(siblingRefId);
                 if (sib) parentIds = getParentsArray(sib);
             }
             if (!parentIds.length) {
                 const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
                 for (const sid of rowIds) {
-                    const s = FAMILY_DB.people.find(p => p.id === sid);
+                    const s = findPersonById(sid);
                     if (s) { const sp = getParentsArray(s); if (sp.length) { parentIds = sp; break; } }
                 }
             }
 
-            parentsArray = parentIds.length > 0 ? parentIds : ['__nc__'];
-            isRoot = (parentsArray.length === 0);
-            customGen = depthIdx + 1; // same generation as the row
+            // If no parents and no children, use __nc__ to keep clustering
+            if (!parentIds.length && !childLinks.length) {
+                parentIds = ['__nc__'];
+            }
+
+            parentsArray = parentIds.length > 0 ? parentIds : [];
+            isRoot = parentsArray.length === 0;
 
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
-                spouse: null,
-                custom_gen: customGen
+                spouse: null
             });
 
-            // Now link the childLinks (existing or newly created) to have this new person as parent
+            // Link children to the new person
             for (const cid of childLinks) {
                 const child = findPersonById(cid);
                 if (child) {
                     const existingParents = getRawParentsArray(child);
-                    // Ensure new person is not already a parent
                     if (!existingParents.includes(newId)) {
                         const updatedParents = [...existingParents, newId];
-                        // If the child had __nc__ and now has a real parent, we might want to remove __nc__? Keep it for safety.
                         await updatePersonInDB(cid, {
                             parents: JSON.stringify(updatedParents),
                             is_root: false
@@ -1323,16 +1300,15 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             if (!pl1) return showErr('Please select at least one parent.');
             const parentIds = [pl1];
             if (pl2 && pl2 !== pl1) parentIds.push(pl2);
+
             parentsArray = parentIds;
             isRoot = false;
-            customGen = depthIdx + 2; // one generation below the selected row (depthIdx is 0-based)
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
-                spouse: null,
-                custom_gen: customGen
+                spouse: null
             });
 
         } else if (placement === 'spouse') {
@@ -1343,14 +1319,12 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             spouseId = partnerId;
             parentsArray = [];
             isRoot = false;
-            customGen = null; // let BFS sync via spouse edge
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
                 parents: JSON.stringify(parentsArray),
                 is_root: isRoot,
                 family_name: familyName,
-                spouse: spouseId,
-                custom_gen: customGen
+                spouse: spouseId
             });
             await updatePersonInDB(partnerId, { spouse: newId });
         }
@@ -1726,16 +1700,14 @@ window.editAddParent = async function(personId) {
             parents: JSON.stringify([]), 
             is_root: true, 
             family_name: null, 
-            spouse: null, 
-            custom_gen: null 
+            spouse: null
         });
         FAMILY_DB.people.push({ 
             id: nid, uid: nuid, name, gender: 'unknown', 
             parents: '[]', 
             is_root: true, 
             family_name: null, 
-            spouse: null, 
-            custom_gen: null 
+            spouse: null
         });
         parentObj = { id: nid, name };
     }
@@ -1778,16 +1750,14 @@ window.editAddChild = async function(personId) {
             parents: JSON.stringify(parentsArray), 
             is_root: false, 
             family_name: null, 
-            spouse: null, 
-            custom_gen: null 
+            spouse: null
         });
         FAMILY_DB.people.push({ 
             id: nid, uid: nuid, name, gender: 'unknown', 
             parents: JSON.stringify(parentsArray), 
             is_root: false, 
             family_name: null, 
-            spouse: null, 
-            custom_gen: null 
+            spouse: null
         });
         childObj = { id: nid, name };
     }
