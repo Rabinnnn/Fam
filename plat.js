@@ -1748,16 +1748,33 @@ window.saveEdit = async function(personId) {
     if (!v.valid) { alert(v.message); return; }
     if (familyName) await assignColorForFamily(familyName);
 
-    const newParents = (window._editParents || []);
+    const newParents = (window._editParents || []);          // real parents selected by user
     const desiredChildren = new Set(window._editChildren || []);
     const oldPerson = findPersonById(personId);
     if (!oldPerson) { alert('Person not found'); return; }
 
-    if (wouldBeIsolated(personId, newParents, Array.from(desiredChildren), spouseId || null)) {
+    // ==============================================================
+    // PRESERVE __nc__ IF IT WAS ORIGINALLY PRESENT AND NO REAL PARENTS ARE ADDED
+    // ==============================================================
+    const rawOldParents = getRawParentsArray(oldPerson);
+    const hadNc = rawOldParents.includes('__nc__');
+    let finalParents = newParents; // real parents (if any)
+
+    // If the person had __nc__ and the user hasn't added any real parent, keep __nc__
+    if (hadNc && finalParents.length === 0) {
+        finalParents = ['__nc__'];
+    }
+    // If the user added real parents, we remove __nc__ (it's no longer needed)
+    // – that's already the case because we're not adding it.
+
+    // Check isolation using the *real* parents (stripping sentinels)
+    const realParentsForIsolation = finalParents.filter(pid => !SENTINELS.has(pid));
+    if (wouldBeIsolated(personId, realParentsForIsolation, Array.from(desiredChildren), spouseId || null)) {
         alert('⚠️ This edit would make the person disconnected from the family tree. Please ensure they have at least one parent, child, or spouse.');
         return;
     }
 
+    // Also check removed parents and children (unchanged)
     const oldParents = getParentsArray(oldPerson);
     const removedParents = oldParents.filter(id => !newParents.includes(id));
     for (const removedParentId of removedParents) {
@@ -1787,17 +1804,19 @@ window.saveEdit = async function(personId) {
         }
     }
 
+    // Build updates
     const updates = { 
         name, 
         gender, 
         family_name: familyName || null,
         spouse: spouseId || null,
-        parents: JSON.stringify(newParents.length ? newParents : []),
-        is_root: newParents.length === 0
+        parents: JSON.stringify(finalParents),
+        is_root: finalParents.length === 0 || (finalParents.length === 1 && finalParents[0] === '__nc__') // root if no real parents
     };
     if (dob) updates.dob = dob;
 
     try {
+        // Handle old spouse removal (if any)
         if (oldSpouseId && oldSpouseId !== spouseId) {
             const oldSpouse = findPersonById(oldSpouseId);
             if (oldSpouse && oldSpouse.spouse === personId) {
@@ -1813,6 +1832,7 @@ window.saveEdit = async function(personId) {
 
         await updatePersonInDB(personId, updates);
 
+        // Update children (unchanged)
         for (const child of oldChildrenIds) {
             if (!desiredChildren.has(child)) {
                 const childObj = findPersonById(child);
