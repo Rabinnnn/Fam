@@ -77,6 +77,9 @@ function getTextColor(hex) {
 // SENTINEL VALUES
 // ==============================================================
 const SENTINELS = new Set(['__na__', '__nc__']);
+function isSentinel(pid) {
+    return SENTINELS.has(pid) || /^__ncgen\d+__$/.test(pid);
+}
 
 // ==============================================================
 // API CALLS
@@ -399,7 +402,7 @@ function getParentsArray(person) {
     if (!person?.parents) return [];
     try {
         const a = typeof person.parents === 'string' ? JSON.parse(person.parents) : person.parents;
-        return Array.isArray(a) ? a.filter(pid => !SENTINELS.has(pid)) : [];
+        return Array.isArray(a) ? a.filter(pid => !isSentinel(pid)) : [];
     } catch { return []; }
 }
 
@@ -470,10 +473,14 @@ function computeGenerations() {
     const gen = new Map();
     const queue = [];
 
-    // All roots (people with no real parents) get generation 1
+    // All roots (people with no real parents) get generation 1,
+    // unless they carry an explicit __ncgenN__ target-generation tag
     for (const p of FAMILY_DB.people) {
         if (getParentsArray(p).length === 0) {
-            gen.set(p.id, 1);
+            const rawParents = getRawParentsArray(p);
+            const genTag = rawParents.find(pid => /^__ncgen\d+__$/.test(pid));
+            const seedGen = genTag ? parseInt(genTag.match(/\d+/)[0], 10) : 1;
+            gen.set(p.id, seedGen);
             queue.push(p.id);
         }
     }
@@ -985,7 +992,7 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
                 </div>
                 <div id="wtError" style="color:#c33;font-size:0.82rem;margin-top:0.5rem;display:none;"></div>
                 <div style="display:flex;gap:0.5rem;margin-top:1rem;">
-                    <button onclick="submitWholeTreeAdd('${rowIdsStr}',${depthIdx},${isOldest})"
+                    <button onclick="submitWholeTreeAdd('${rowIdsStr}',${depthIdx},${isOldest},${genNum})"
                             class="submit-btn" style="flex:1;">Add to Tree</button>
                     <button onclick="closeWholeTreeAddModal()"
                             style="flex:1;background:#6c757d;color:white;border:none;border-radius:0.5rem;cursor:pointer;padding:0.5rem;">Cancel</button>
@@ -1114,7 +1121,7 @@ window.closeWholeTreeAddModal = function() { document.getElementById('wholeTreeA
 // ==============================================================
 // SUBMIT WHOLE TREE ADD – MODIFIED FOR NEW "WITHIN" BEHAVIOUR
 // ==============================================================
-window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
+window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum) {
     const name       = document.getElementById('wtName').value.trim();
     const gender     = document.getElementById('wtGender').value;
     const dob        = document.getElementById('wtDob').value;
@@ -1253,8 +1260,11 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest) {
             }
 
         } else if (placement === 'within') {
-            // Use selected parents, or __nc__ to keep clustering if no parents selected
-            let finalParents = parentIds.length > 0 ? parentIds : (hasExistingMembers() ? ['__nc__'] : []);
+            // Use selected parents, or __nc__ + a generation tag to keep clustering
+            // and preserve the intended row if no parents were selected
+            let finalParents = parentIds.length > 0
+                ? parentIds
+                : (hasExistingMembers() ? ['__nc__', `__ncgen${genNum}__`] : []);
             const isRoot = finalParents.length === 0;
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null,
@@ -1758,17 +1768,19 @@ window.saveEdit = async function(personId) {
     // ==============================================================
     const rawOldParents = getRawParentsArray(oldPerson);
     const hadNc = rawOldParents.includes('__nc__');
+    const oldGenTag = rawOldParents.find(pid => /^__ncgen\d+__$/.test(pid));
     let finalParents = newParents; // real parents (if any)
 
     // If the person had __nc__ and the user hasn't added any real parent, keep __nc__
+    // (and preserve their original target-generation tag, if any)
     if (hadNc && finalParents.length === 0) {
-        finalParents = ['__nc__'];
+        finalParents = oldGenTag ? ['__nc__', oldGenTag] : ['__nc__'];
     }
     // If the user added real parents, we remove __nc__ (it's no longer needed)
     // – that's already the case because we're not adding it.
 
     // Check isolation using the *real* parents (stripping sentinels)
-    const realParentsForIsolation = finalParents.filter(pid => !SENTINELS.has(pid));
+    const realParentsForIsolation = finalParents.filter(pid => !isSentinel(pid));
     if (wouldBeIsolated(personId, realParentsForIsolation, Array.from(desiredChildren), spouseId || null)) {
         alert('⚠️ This edit would make the person disconnected from the family tree. Please ensure they have at least one parent, child, or spouse.');
         return;
