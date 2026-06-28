@@ -89,7 +89,7 @@
 
         // Use plat.js globals & functions directly (read-only)
         const clusters  = findFamilyClusters();       // from plat.js
-        const genTarget = activeFilter - 1;           // convert 1-based UI → 0-based depth
+        const genTarget = activeFilter;                // plat.js generations are already 1-based
 
         // Collect members at the target depth across all clusters
         let totalMatches = 0;

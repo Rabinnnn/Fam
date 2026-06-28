@@ -870,6 +870,11 @@ window.showFirstMemberModal = function() {
                     <input type="date" id="wtDob" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
                 </div>
                 <div class="form-group">
+                    <label>Email <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <input type="email" id="wtEmail" placeholder="name@example.com"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                </div>
+                <div class="form-group">
                     <label>Family Name <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
                     <select id="wtFamilyNameSelect" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;margin-bottom:0.4rem;">
                         <option value="">-- Select existing family --</option>${fnOpts}
@@ -895,6 +900,7 @@ window.submitFirstMember = async function() {
     const name       = document.getElementById('wtName').value.trim();
     const gender     = document.getElementById('wtGender').value;
     const dob        = document.getElementById('wtDob').value;
+    const email      = document.getElementById('wtEmail')?.value.trim() || null;
     const fnSelect   = document.getElementById('wtFamilyNameSelect').value.trim();
     const fnInput    = document.getElementById('wtFamilyNameInput').value.trim();
     const familyName = fnSelect || fnInput || null;
@@ -911,7 +917,7 @@ window.submitFirstMember = async function() {
     try {
         // First member: root (no parents)
         await addPersonToDB({
-            id: newId, uid, name, gender, dob: dob||null,
+            id: newId, uid, name, gender, dob: dob||null, email,
             parents: JSON.stringify([]),
             is_root: true,
             family_name: familyName,
@@ -980,6 +986,11 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
                 <div class="form-group">
                     <label>Date of Birth <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
                     <input type="date" id="wtDob" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
+                </div>
+                <div class="form-group">
+                    <label>Email <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
+                    <input type="email" id="wtEmail" placeholder="name@example.com"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
                 </div>
                 <div class="form-group">
                     <label>Family Name <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
@@ -1125,6 +1136,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
     const name       = document.getElementById('wtName').value.trim();
     const gender     = document.getElementById('wtGender').value;
     const dob        = document.getElementById('wtDob').value;
+    const email      = document.getElementById('wtEmail')?.value.trim() || null;
     const placement  = document.getElementById('wtPlacement').value;
     const fnSelect   = document.getElementById('wtFamilyNameSelect').value.trim();
     const fnInput    = document.getElementById('wtFamilyNameInput').value.trim();
@@ -1240,7 +1252,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
 
             // Create the new person (root)
             await addPersonToDB({
-                id: newId, uid, name, gender, dob: dob||null,
+                id: newId, uid, name, gender, dob: dob||null, email,
                 parents: JSON.stringify([]),
                 is_root: true,
                 family_name: familyName,
@@ -1267,7 +1279,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 : (hasExistingMembers() ? ['__nc__', `__ncgen${genNum}__`] : []);
             const isRoot = finalParents.length === 0;
             await addPersonToDB({
-                id: newId, uid, name, gender, dob: dob||null,
+                id: newId, uid, name, gender, dob: dob||null, email,
                 parents: JSON.stringify(finalParents),
                 is_root: isRoot,
                 family_name: familyName,
@@ -1279,7 +1291,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
             finalParentIds = parentIds;
             const isRoot = false;
             await addPersonToDB({
-                id: newId, uid, name, gender, dob: dob||null,
+                id: newId, uid, name, gender, dob: dob||null, email,
                 parents: JSON.stringify(finalParentIds),
                 is_root: isRoot,
                 family_name: familyName,
@@ -1290,7 +1302,7 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
             finalSpouseId = spouseId;
             const isRoot = false;
             await addPersonToDB({
-                id: newId, uid, name, gender, dob: dob||null,
+                id: newId, uid, name, gender, dob: dob||null, email,
                 parents: JSON.stringify([]),
                 is_root: isRoot,
                 family_name: familyName,
@@ -1401,7 +1413,7 @@ function buildLineageHtml(person) {
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
                         <div class="lineage-nodes-row" style="justify-content:center;">
-                            ${buildNodeHtml(anc)}
+                            ${buildNodeHtml(anc, '', `showPersonDetailsModal('${anc.id}')`)}
                         </div>
                     </div>`;
             if (i < uniqueAncestors.length - 1) html += `<div class="lineage-connector">▼</div>`;
@@ -1413,7 +1425,7 @@ function buildLineageHtml(person) {
     html += `<div class="lineage-gen-block">
                 <div class="lineage-gen-label">📍 ${escapeHtml(person.name)} — Generation ${currentGen}</div>
                 <div class="lineage-nodes-row" style="justify-content:center;">
-                    ${buildNodeHtml(person, 'focused-node')}
+                    ${buildNodeHtml(person, 'focused-node', `showPersonDetailsModal('${person.id}')`)}
                 </div>
             </div>`;
 
@@ -1426,7 +1438,7 @@ function buildLineageHtml(person) {
             html += `<div class="lineage-gen-block">
                         <div class="lineage-gen-label">${label}</div>
                         <div class="lineage-nodes-row" style="justify-content:center;">
-                            ${buildNodeHtml(desc)}
+                            ${buildNodeHtml(desc, '', `showPersonDetailsModal('${desc.id}')`)}
                         </div>
                     </div>`;
             if (i < uniqueDescendants.length - 1) html += `<div class="lineage-connector">▼</div>`;
@@ -1471,6 +1483,49 @@ function showLineageModal(personId) {
 
 window.closeLineageModal = function() { document.getElementById('lineageModal')?.remove(); };
 window.handleNodeClick = function(personId) { showLineageModal(personId); };
+
+// ==============================================================
+// PERSON DETAILS MODAL (read-only) — opened when clicking a node
+// from WITHIN the lineage modal, instead of opening another lineage view
+// ==============================================================
+function showPersonDetailsModal(personId) {
+    const person = findPersonById(personId);
+    if (!person) return;
+    document.getElementById('personDetailsModal')?.remove();
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="personDetailsModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
+             display:flex;align-items:center;justify-content:center;z-index:10500;padding:1rem;">
+            <div style="background:white;border-radius:1rem;padding:1.5rem;max-width:380px;
+                        width:100%;max-height:90vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h3 style="color:#4f321b;">👤 Person Details</h3>
+                    <button onclick="closePersonDetailsModal()"
+                            style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888;">✕</button>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:0.75rem;font-size:0.9rem;color:#3a2010;">
+                    <div>
+                        <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:0.03em;">Name</div>
+                        <div style="font-weight:600;">${escapeHtml(person.name)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:0.03em;">Date of Birth</div>
+                        <div>${person.dob ? escapeHtml(person.dob) : '<span style="color:#aaa;">Not set</span>'}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:0.03em;">Email</div>
+                        <div>${person.email ? escapeHtml(person.email) : '<span style="color:#aaa;">Not set</span>'}</div>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;margin-top:1.25rem;
+                            padding-top:1rem;border-top:1px solid #e2cfb0;">
+                    <button onclick="closePersonDetailsModal()"
+                            style="background:#6c757d;color:white;border:none;border-radius:0.75rem;
+                                   padding:0.5rem 1.2rem;cursor:pointer;font-size:0.85rem;">Close</button>
+                </div>
+            </div>
+        </div>`);
+}
+window.closePersonDetailsModal = function() { document.getElementById('personDetailsModal')?.remove(); };
 
 // ==============================================================
 // EDIT MODAL (unchanged)
@@ -1532,6 +1587,11 @@ function showEditModal(person) {
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;cursor:pointer;">
                 </div>
                 <div class="form-group">
+                    <label>Email <span style="font-weight:400;color:#888;">(optional)</span></label>
+                    <input type="email" id="editEmail" value="${escapeHtml(person.email || '')}" placeholder="name@example.com"
+                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                </div>
+                <div class="form-group">
                     <label>Family Name <span style="font-weight:400;color:#888;">(select or type new)</span></label>
                     <input type="text" id="editFamilyName" list="editFamilyList"
                            value="${escapeHtml(person.family_name || '')}"
@@ -1552,17 +1612,16 @@ function showEditModal(person) {
                         ${parentTags || '<span style="font-size:0.75rem;color:#aaa;">No parents set</span>'}
                     </div>
                     <div style="display:flex;gap:0.4rem;">
-                        <input type="text" id="editAddParentInput" list="editAddParentList"
-                               placeholder="Type or search parent name"
+                        <select id="editAddParentSelect"
                                style="flex:1;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;font-size:0.85rem;">
-                        <datalist id="editAddParentList">
-                            ${allPeople.map(p => `<option value="${escapeHtml(p.name)}">`).join('')}
-                        </datalist>
+                            <option value="">-- Select existing person --</option>
+                            ${allPeople.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.uid?` [#${p.uid}]`:''}</option>`).join('')}
+                        </select>
                         <button type="button" onclick="editAddParent('${person.id}')"
                                 style="background:#5a3e2b;color:white;border:none;border-radius:0.5rem;
                                        padding:0.5rem 0.8rem;cursor:pointer;font-size:0.8rem;white-space:nowrap;">+ Add</button>
                     </div>
-                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">Select an existing person or type a new name and click Add.</div>
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">Only existing members of the tree can be selected as a parent.</div>
                 </div>
                 <div class="form-group">
                     <label>Children <span style="font-weight:400;color:#888;">(optional)</span></label>
@@ -1656,31 +1715,11 @@ window.editRemoveChild = function(childId) {
 };
 
 window.editAddParent = async function(personId) {
-    const input = document.getElementById('editAddParentInput');
-    const name  = input?.value.trim();
-    if (!name) return;
-    let parentObj = findPeopleByName(name)[0] || null;
-    if (!parentObj) {
-        const v = validateFullName(name);
-        if (!v.valid) { alert(v.message); return; }
-        const nuid = generateUID(), nid = makePersonId(name, nuid);
-        // New parent becomes a root (no parents) – they will be connected via the child relationship
-        await addPersonToDB({ 
-            id: nid, uid: nuid, name, gender: 'unknown', 
-            parents: JSON.stringify([]), 
-            is_root: true, 
-            family_name: null, 
-            spouse: null
-        });
-        FAMILY_DB.people.push({ 
-            id: nid, uid: nuid, name, gender: 'unknown', 
-            parents: '[]', 
-            is_root: true, 
-            family_name: null, 
-            spouse: null
-        });
-        parentObj = { id: nid, name };
-    }
+    const select = document.getElementById('editAddParentSelect');
+    const parentId = select?.value;
+    if (!parentId) return;
+    const parentObj = findPersonById(parentId);
+    if (!parentObj) { alert('Selected person not found.'); return; }
     if ((window._editParents || []).includes(parentObj.id)) { alert('Already added.'); return; }
     window._editParents = [...(window._editParents || []), parentObj.id];
     const wrap = document.getElementById('editParentTags');
@@ -1693,7 +1732,7 @@ window.editAddParent = async function(personId) {
             <button type="button" onclick="editRemoveParent('${parentObj.id}')"
                     style="background:none;border:none;cursor:pointer;color:#c33;font-size:0.8rem;line-height:1;">✕</button>
         </span>`);
-    if (input) input.value = '';
+    if (select) select.value = '';
 };
 
 window.editAddChild = async function(personId) {
@@ -1750,6 +1789,7 @@ window.saveEdit = async function(personId) {
     const name       = document.getElementById('editName').value.trim();
     const gender     = document.getElementById('editGender').value;
     const dob        = document.getElementById('editDob').value;
+    const email      = document.getElementById('editEmail')?.value.trim() || null;
     const familyName = document.getElementById('editFamilyName').value.trim();
     const spouseId   = document.getElementById('editSpouse').value;
 
@@ -1781,13 +1821,35 @@ window.saveEdit = async function(personId) {
 
     // Check isolation using the *real* parents (stripping sentinels)
     const realParentsForIsolation = finalParents.filter(pid => !isSentinel(pid));
-    if (wouldBeIsolated(personId, realParentsForIsolation, Array.from(desiredChildren), spouseId || null)) {
-        alert('⚠️ This edit would make the person disconnected from the family tree. Please ensure they have at least one parent, child, or spouse.');
-        return;
+
+    // ==============================================================
+    // SKIP CONNECTIVITY CHECKS WHEN RELATIONSHIPS ARE UNCHANGED
+    // (e.g. only editing email/name/dob/etc. on an existing standalone root)
+    // ==============================================================
+    const oldParents = getParentsArray(oldPerson);
+    const oldChildrenIds = FAMILY_DB.people.filter(p => getParentsArray(p).includes(personId)).map(p => p.id);
+    const oldSpouseId = oldPerson.spouse || null;
+
+    const sameSet = (a, b) => {
+        const sa = new Set(a), sb = new Set(b);
+        if (sa.size !== sb.size) return false;
+        for (const v of sa) if (!sb.has(v)) return false;
+        return true;
+    };
+
+    const relationshipsChanged =
+        !sameSet(realParentsForIsolation, oldParents) ||
+        !sameSet(Array.from(desiredChildren), oldChildrenIds) ||
+        (spouseId || null) !== oldSpouseId;
+
+    if (relationshipsChanged) {
+        if (wouldBeIsolated(personId, realParentsForIsolation, Array.from(desiredChildren), spouseId || null)) {
+            alert('⚠️ This edit would make the person disconnected from the family tree. Please ensure they have at least one parent, child, or spouse.');
+            return;
+        }
     }
 
     // Also check removed parents and children (unchanged)
-    const oldParents = getParentsArray(oldPerson);
     const removedParents = oldParents.filter(id => !newParents.includes(id));
     for (const removedParentId of removedParents) {
         if (wouldPersonBeIsolatedAfterRemovingChild(removedParentId, personId)) {
@@ -1797,7 +1859,6 @@ window.saveEdit = async function(personId) {
         }
     }
 
-    const oldChildrenIds = FAMILY_DB.people.filter(p => getParentsArray(p).includes(personId)).map(p => p.id);
     const removedChildren = oldChildrenIds.filter(id => !desiredChildren.has(id));
     for (const removedChildId of removedChildren) {
         if (wouldPersonBeIsolatedAfterRemovingParent(removedChildId, personId)) {
@@ -1807,7 +1868,6 @@ window.saveEdit = async function(personId) {
         }
     }
 
-    const oldSpouseId = oldPerson.spouse || null;
     if (oldSpouseId && oldSpouseId !== spouseId) {
         if (wouldPersonBeIsolatedAfterRemovingSpouse(oldSpouseId, personId)) {
             const spouseName = findPersonById(oldSpouseId)?.name || oldSpouseId;
@@ -1826,6 +1886,7 @@ window.saveEdit = async function(personId) {
         is_root: finalParents.length === 0 || (finalParents.length === 1 && finalParents[0] === '__nc__') // root if no real parents
     };
     if (dob) updates.dob = dob;
+    updates.email = email;
 
     try {
         // Handle old spouse removal (if any)
