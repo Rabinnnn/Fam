@@ -1540,6 +1540,12 @@ function showEditModal(person) {
     const allPeople = [...FAMILY_DB.people].filter(p => p.id !== person.id).sort((a,b) => a.name.localeCompare(b.name));
     const allPeopleOpts = allPeople.map(p => `<option value="${escapeHtml(p.name)}">`).join('');
 
+    // Only people from a strictly earlier generation are eligible to be selected as a parent
+    const personGen = getPersonGenerationLevel(person);
+    const eligibleParents = allPeople
+        .filter(p => getPersonGenerationLevel(p) < personGen)
+        .sort((a,b) => a.name.localeCompare(b.name));
+
     const currentParents = getParentsArray(person).map(pid => findPersonById(pid)).filter(Boolean);
     const currentChildren = FAMILY_DB.people.filter(p => getParentsArray(p).includes(person.id));
 
@@ -1614,14 +1620,14 @@ function showEditModal(person) {
                     <div style="display:flex;gap:0.4rem;">
                         <select id="editAddParentSelect"
                                style="flex:1;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;font-size:0.85rem;">
-                            <option value="">-- Select existing person --</option>
-                            ${allPeople.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.uid?` [#${p.uid}]`:''}</option>`).join('')}
+                            <option value="">${eligibleParents.length ? '-- Select existing person --' : '-- No eligible parents (none in an earlier generation) --'}</option>
+                            ${eligibleParents.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.uid?` [#${p.uid}]`:''}</option>`).join('')}
                         </select>
                         <button type="button" onclick="editAddParent('${person.id}')"
                                 style="background:#5a3e2b;color:white;border:none;border-radius:0.5rem;
                                        padding:0.5rem 0.8rem;cursor:pointer;font-size:0.8rem;white-space:nowrap;">+ Add</button>
                     </div>
-                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">Only existing members of the tree can be selected as a parent.</div>
+                    <div style="font-size:0.68rem;color:#888;margin-top:0.25rem;">Only existing members from an earlier generation can be selected as a parent.</div>
                 </div>
                 <div class="form-group">
                     <label>Children <span style="font-weight:400;color:#888;">(optional)</span></label>
