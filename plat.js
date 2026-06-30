@@ -1250,6 +1250,39 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 personOwners[childId] = currentUser;
             }
 
+            // ==============================================================
+            // WHOLE-GENERATION SHIFT (only when "above" is used from Gen 1)
+            // Everyone previously at Generation 1 — selected or not — must end
+            // up at Generation 2, and every __nc__-tagged person elsewhere in
+            // the tree at Gen 2+ must have their tag bumped by 1, so they don't
+            // collide with people who get pushed down automatically via the
+            // real parent→child cascade once the selected child(ren) move.
+            // ==============================================================
+            let unselectedGen1Updates = [];
+            let ncTagBumps = [];
+            if (genNum === 1) {
+                // Snapshot generations as they stand right now, before this addition
+                const genSnapshotBefore = computeGenerations();
+
+                for (const p of FAMILY_DB.people) {
+                    const wasGen1 = genSnapshotBefore.get(p.id) === 1;
+                    if (wasGen1 && !selectedChildren.includes(p.id)) {
+                        // Real root or already-tagged person at gen 1, not chosen as
+                        // a child of the new person — push to gen 2 via tag only
+                        unselectedGen1Updates.push(p.id);
+                    } else if (!wasGen1 && genSnapshotBefore.get(p.id) >= 2) {
+                        // Anyone else (gen 2+) who is ONLY at that generation because
+                        // of an explicit __ncgen tag needs that tag bumped by 1 —
+                        // people there via a real parent edge cascade automatically.
+                        const rawP = getRawParentsArray(p);
+                        const existingTag = rawP.find(pid => /^__ncgen\d+__$/.test(pid));
+                        if (existingTag && getParentsArray(p).length === 0) {
+                            ncTagBumps.push({ id: p.id, newGen: genSnapshotBefore.get(p.id) + 1 });
+                        }
+                    }
+                }
+            }
+
             // Create the new person (root). If the tree already has other members,
             // attach via __nc__ + a generation tag so this new root stays in the
             // same overall cluster instead of forming a second, disconnected tree —
@@ -1276,6 +1309,31 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                         is_root: false
                     });
                 }
+            }
+
+            // Push unselected former Gen-1 members down to Gen 2 via tag,
+            // and bump every other __nc__-tagged person's generation by 1
+            // so the whole tree shifts down uniformly beneath the new top row.
+            for (const memberId of unselectedGen1Updates) {
+                const member = findPersonById(memberId);
+                if (!member) continue;
+                const rawMemberParents = getRawParentsArray(member);
+                const realMemberParents = getParentsArray(member);
+                if (realMemberParents.length > 0) continue; // has real parents — not a true gen-1 root, skip
+                const updatedParents = [...new Set([...rawMemberParents.filter(pid => pid !== '__nc__' && !/^__ncgen\d+__$/.test(pid)), '__nc__', '__ncgen2__'])];
+                await updatePersonInDB(member.id, {
+                    parents: JSON.stringify(updatedParents),
+                    is_root: false
+                });
+            }
+            for (const bump of ncTagBumps) {
+                const member = findPersonById(bump.id);
+                if (!member) continue;
+                const rawMemberParents = getRawParentsArray(member);
+                const updatedParents = [...new Set([...rawMemberParents.filter(pid => pid !== '__nc__' && !/^__ncgen\d+__$/.test(pid)), '__nc__', `__ncgen${bump.newGen}__`])];
+                await updatePersonInDB(member.id, {
+                    parents: JSON.stringify(updatedParents)
+                });
             }
 
         } else if (placement === 'within') {
