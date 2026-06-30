@@ -1250,10 +1250,17 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 personOwners[childId] = currentUser;
             }
 
-            // Create the new person (root)
+            // Create the new person (root). If the tree already has other members,
+            // attach via __nc__ + a generation tag so this new root stays in the
+            // same overall cluster instead of forming a second, disconnected tree —
+            // the real child link added below will normally anchor them correctly,
+            // but the __nc__ tag is what keeps findFamilyClusters() from splitting
+            // them off if that child relationship is ever later changed.
+            const aboveTargetGen = Math.max(1, genNum - 1);
+            const aboveFinalParents = hasExistingMembers() ? ['__nc__', `__ncgen${aboveTargetGen}__`] : [];
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null, email,
-                parents: JSON.stringify([]),
+                parents: JSON.stringify(aboveFinalParents),
                 is_root: true,
                 family_name: familyName,
                 spouse: null
@@ -1301,9 +1308,16 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
         } else if (placement === 'spouse') {
             finalSpouseId = spouseId;
             const isRoot = false;
+            // Use __nc__ (+ a generation tag matching the partner's actual generation)
+            // instead of [] — otherwise this person would also qualify as a "real root"
+            // candidate in findFamilyClusters(), risking a second disconnected cluster
+            // if they ever get picked over the tree's true root as the __nc__ anchor.
+            const spousePartner = findPersonById(finalSpouseId);
+            const spouseTargetGen = spousePartner ? getPersonGenerationLevel(spousePartner) : 1;
+            const spouseFinalParents = hasExistingMembers() ? ['__nc__', `__ncgen${spouseTargetGen}__`] : [];
             await addPersonToDB({
                 id: newId, uid, name, gender, dob: dob||null, email,
-                parents: JSON.stringify([]),
+                parents: JSON.stringify(spouseFinalParents),
                 is_root: isRoot,
                 family_name: familyName,
                 spouse: finalSpouseId
