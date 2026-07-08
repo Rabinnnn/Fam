@@ -221,10 +221,17 @@ function _paintConnectors(wrap) {
         const x1   = nodeMap[visible[0]].cx;
         const x2   = nodeMap[visible[visible.length - 1]].cx;
 
-        lines.push({ d: `M ${x1} ${topY} L ${x2} ${topY}`, stroke: C_SIBLING, width: 1.8, dash: '4,4' });
+        // Use the family color of the parent if one is assigned, else fall back to C_SIBLING
+        const parentId = key.split('|')[0];
+        const parentPerson = FAMILY_DB.people.find(p => p.id === parentId);
+        const siblingColor = (parentPerson?.family_name && typeof getColorForFamily === 'function')
+            ? (getColorForFamily(parentPerson.family_name) || C_SIBLING)
+            : C_SIBLING;
+
+        lines.push({ d: `M ${x1} ${topY} L ${x2} ${topY}`, stroke: siblingColor, width: 1.8, dash: '4,4' });
         visible.forEach(id => {
             const n = nodeMap[id];
-            lines.push({ d: `M ${n.cx} ${topY} L ${n.cx} ${n.top - 2}`, stroke: C_SIBLING, width: 1.5, dash: '' });
+            lines.push({ d: `M ${n.cx} ${topY} L ${n.cx} ${n.top - 2}`, stroke: siblingColor, width: 1.5, dash: '' });
         });
     });
 
