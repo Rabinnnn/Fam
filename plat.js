@@ -152,10 +152,24 @@ async function removePersonFromAllRelations(personId) {
     for (const p of peopleToUpdate) {
         let newParents = getRawParentsArray(p).filter(pid => pid !== personId);
         if (newParents.length === 0) {
-            await updatePersonInDB(p.id, {
-                parents: JSON.stringify([]),
-                is_root: true
-            });
+            // Stripping the deleted person left this person with no parents at all.
+            // Rather than making them a disconnected Gen-1 root (parents: []),
+            // anchor them in-place via __nc__ + their current generation tag,
+            // so they stay clustered and visually at the correct generation row.
+            const otherMembers = FAMILY_DB.people.filter(q => q.id !== personId && q.id !== p.id);
+            if (otherMembers.length > 0) {
+                const currentGen = getPersonGenerationLevel(p);
+                await updatePersonInDB(p.id, {
+                    parents: JSON.stringify(['__nc__', `__ncgen${currentGen}__`]),
+                    is_root: false
+                });
+            } else {
+                // No one else in the tree — this person becomes the sole root
+                await updatePersonInDB(p.id, {
+                    parents: JSON.stringify([]),
+                    is_root: true
+                });
+            }
         } else {
             await updatePersonInDB(p.id, {
                 parents: JSON.stringify(newParents)
