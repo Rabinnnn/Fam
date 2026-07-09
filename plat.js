@@ -91,10 +91,12 @@ async function apiFetch(path, options = {}) {
     if (match) {
         url += `&id=${encodeURIComponent(match[1])}`;
     }
+    const token = sessionStorage.getItem('auth_token');
     const res = await fetch(url, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             ...(options.headers || {})
         }
     });
@@ -105,6 +107,12 @@ async function apiFetch(path, options = {}) {
     } catch (e) {
         console.error('API returned non-JSON:', responseText.substring(0, 200));
         throw new Error(`API error (${res.status}): ${responseText.substring(0, 100)}`);
+    }
+    if (res.status === 401) {
+        // Session expired or invalid — redirect to login
+        sessionStorage.removeItem('auth_token');
+        window.location.href = 'login.html';
+        return;
     }
     if (!res.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -2307,10 +2315,29 @@ window.deletePersonHandler = async function(personId) {
 // ==============================================================
 // AUTH
 // ==============================================================
-function checkAuth() {
-    currentUser = sessionStorage.getItem('currentUser');
-    isAdmin     = sessionStorage.getItem('isAdmin') === 'true';
-    if (!currentUser) { window.location.href = 'login.html'; return false; }
+async function checkAuth() {
+    const token = sessionStorage.getItem('auth_token');
+    if (!token) { window.location.href = 'login.html'; return false; }
+
+    try {
+        const res  = await fetch('./auth_api.php?action=me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            sessionStorage.removeItem('auth_token');
+            window.location.href = 'login.html';
+            return false;
+        }
+        const data = await res.json();
+        // Set globals from server-verified response — isAdmin is NEVER read from client storage
+        currentUser = data.username;
+        isAdmin     = data.isAdmin === true;
+    } catch (e) {
+        console.error('Auth check failed:', e);
+        window.location.href = 'login.html';
+        return false;
+    }
+
     document.getElementById('usernameDisplay').textContent = currentUser;
     if (isAdmin) {
         document.getElementById('adminBadge').style.display  = 'inline-block';
@@ -2318,7 +2345,20 @@ function checkAuth() {
     }
     return true;
 }
-function logout() { sessionStorage.clear(); window.location.href = 'login.html'; }
+
+async function logout() {
+    const token = sessionStorage.getItem('auth_token');
+    if (token) {
+        try {
+            await fetch('./auth_api.php?action=logout', {
+                method:  'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+        } catch (_) {}
+    }
+    sessionStorage.removeItem('auth_token');
+    window.location.href = 'login.html';
+}
 
 // ==============================================================
 // EVENT LISTENERS & INIT
@@ -2346,7 +2386,7 @@ function setupEventListeners() {
 }
 
 async function init() {
-    if (!checkAuth()) return;
+    if (!await checkAuth()) return;
     try {
         await loadFamilyColors();
         await loadPeople();

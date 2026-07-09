@@ -43,6 +43,34 @@ function getRequestBody() {
     return json_decode(file_get_contents('php://input'), true);
 }
 
+// ── Auth gate: every request to api.php must carry a valid token ──
+function requireAuth($pdo) {
+    $headers = getallheaders();
+    $token   = null;
+    if (!empty($headers['Authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['Authorization']);
+    } elseif (!empty($headers['X-Auth-Token'])) {
+        $token = $headers['X-Auth-Token'];
+    }
+    if (!$token) {
+        sendJson(['error' => 'Unauthorized'], 401);
+    }
+    $stmt = $pdo->prepare("
+        SELECT u.id, u.username, u.is_admin
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.token = ? AND s.expires_at > NOW()
+    ");
+    $stmt->execute([$token]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        sendJson(['error' => 'Unauthorized'], 401);
+    }
+    return $user;
+}
+
+$authUser = requireAuth($pdo);
+
 $method = $_SERVER['REQUEST_METHOD'];
 $table  = $_GET['table'] ?? '';
 $id     = $_GET['id'] ?? null;
@@ -85,9 +113,8 @@ elseif ($method === 'POST') {
                 ':is_root'     => $data['is_root'] ? 1 : 0,
                 ':family_name' => $data['family_name'] ?? null,
                 ':spouse'      => $data['spouse'] ?? null,
-                ':custom_gen'  => $data['custom_gen'] ?? null, // can be null or int
+                ':custom_gen'  => $data['custom_gen'] ?? null,
                 ':email'       => $data['email'] ?? null,
-
             ]);
             sendJson(['message' => 'Created'], 201);
         } elseif ($table === 'family_colors') {
@@ -109,7 +136,6 @@ elseif ($method === 'PATCH') {
     $data = getRequestBody();
     $fields = [];
     $params = [':id' => $id];
-    // Added 'spouse' and 'custom_gen' to allowed fields
     $allowed = ['name', 'gender', 'dob', 'parents', 'is_root', 'family_name', 'spouse', 'custom_gen', 'email'];
     foreach ($allowed as $field) {
         if (array_key_exists($field, $data)) {
