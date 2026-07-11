@@ -34,8 +34,9 @@ $options = [
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
 } catch (PDOException $e) {
+    error_log('Auth API DB error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'A server error occurred. Please try again later.']);
     exit;
 }
 
@@ -51,14 +52,18 @@ function getBody() {
 }
 
 function getToken() {
-    // Accept token from Authorization header or X-Auth-Token header
-    $headers = getallheaders();
-    if (!empty($headers['Authorization'])) {
-        return str_replace('Bearer ', '', $headers['Authorization']);
+    $auth = null;
+    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+        $auth = $_SERVER['HTTP_AUTHORIZATION'];
+    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+    } elseif (function_exists('getallheaders')) {
+        foreach (getallheaders() as $name => $value) {
+            if (strtolower($name) === 'authorization') { $auth = $value; break; }
+            if (strtolower($name) === 'x-auth-token')  { return trim($value); }
+        }
     }
-    if (!empty($headers['X-Auth-Token'])) {
-        return $headers['X-Auth-Token'];
-    }
+    if ($auth) return str_replace('Bearer ', '', trim($auth));
     return null;
 }
 
@@ -75,7 +80,7 @@ function verifySession($pdo) {
         SELECT u.id, u.username, u.email, u.is_admin
         FROM sessions s
         JOIN users u ON s.user_id = u.id
-        WHERE s.token = ? AND s.expires_at > NOW()
+        WHERE s.token = ? AND s.expires_at > UTC_TIMESTAMP()
     ");
     $stmt->execute([$token]);
     return $stmt->fetch() ?: null;
@@ -93,8 +98,9 @@ if ($action === 'me' && $method === 'GET') {
     if (!$user) sendJson(['error' => 'Unauthorized'], 401);
 
     // Extend session on activity (rolling window)
-    $stmt = $pdo->prepare("UPDATE sessions SET expires_at = DATE_ADD(NOW(), INTERVAL 8 HOUR) WHERE token = ?");
-    $stmt->execute([getToken()]);
+    $newExpiry = gmdate('Y-m-d H:i:s', time() + (8 * 3600));
+    $stmt = $pdo->prepare("UPDATE sessions SET expires_at = ? WHERE token = ?");
+    $stmt->execute([$newExpiry, getToken()]);
 
     sendJson([
         'username' => $user['username'],
@@ -126,10 +132,10 @@ if ($action === 'signup' && $method === 'POST') {
     // Hash password with bcrypt (cost factor 12)
     $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
-    $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, is_admin, created_at) VALUES (?, ?, ?, 0, NOW())");
+    $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, is_admin, is_approved, created_at) VALUES (?, ?, ?, 0, 0, NOW())");
     $stmt->execute([$username, $email ?: null, $hash]);
 
-    sendJson(['message' => 'Account created successfully'], 201);
+    sendJson(['message' => 'Account created successfully. Please wait for an administrator to approve your account before signing in.'], 201);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -143,24 +149,29 @@ if ($action === 'login' && $method === 'POST') {
     if (!$username || !$password) sendJson(['error' => 'Username and password are required'], 400);
 
     // Fetch user
-    $stmt = $pdo->prepare("SELECT id, username, email, password_hash, is_admin FROM users WHERE username = ?");
+    $stmt = $pdo->prepare("SELECT id, username, email, password_hash, is_admin, is_approved FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
 
     // Use password_verify — timing-safe comparison, bcrypt-aware
     if (!$user || !password_verify($password, $user['password_hash'])) {
-        // Deliberate vague message — don't reveal which field was wrong
         sendJson(['error' => 'Invalid username or password'], 401);
+    }
+
+    // Block unapproved accounts (admin accounts are always allowed)
+    if (!$user['is_admin'] && !$user['is_approved']) {
+        sendJson(['error' => 'Your account is pending approval by an administrator. You will be notified by email once approved.'], 403);
     }
 
     // Invalidate any existing sessions for this user (one active session at a time)
     $stmt = $pdo->prepare("DELETE FROM sessions WHERE user_id = ?");
     $stmt->execute([$user['id']]);
 
-    // Create new session token — expires in 8 hours
-    $token = generateToken();
-    $stmt  = $pdo->prepare("INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 8 HOUR))");
-    $stmt->execute([$user['id'], $token]);
+    // Create new session token using PHP UTC timestamp to avoid cPanel timezone mismatch
+    $token     = generateToken();
+    $expiresAt = gmdate('Y-m-d H:i:s', time() + (8 * 3600));
+    $stmt      = $pdo->prepare("INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)");
+    $stmt->execute([$user['id'], $token, $expiresAt]);
 
     sendJson([
         'token'    => $token,

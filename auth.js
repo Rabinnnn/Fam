@@ -65,7 +65,7 @@ async function signup() {
             return;
         }
 
-        showSuccess('✅ Account created! Please sign in.');
+        showSuccess('✅ Account created! Your registration is pending admin approval. You will be notified by email once approved.');
         document.getElementById('signupUsername').value = '';
         document.getElementById('signupEmail').value    = '';
         document.getElementById('signupPassword').value = '';
