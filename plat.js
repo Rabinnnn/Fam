@@ -157,33 +157,55 @@ async function removePersonFromAllRelations(personId) {
         const parents = getRawParentsArray(p);
         return parents.includes(personId);
     });
-    for (const p of peopleToUpdate) {
-        let newParents = getRawParentsArray(p).filter(pid => pid !== personId);
-        if (newParents.length === 0) {
-            // Stripping the deleted person left this person with no parents at all.
-            // Rather than making them a disconnected Gen-1 root (parents: []),
-            // anchor them in-place via __nc__ + their current generation tag,
-            // so they stay clustered and visually at the correct generation row.
+
+    // Snapshot generations synchronously before any async DB writes
+    refreshGenerationCache();
+
+    // Pre-compute all updates synchronously so generation lookups
+    // never happen after an await against a potentially stale state
+    const updates = peopleToUpdate.map(p => {
+        const newParents = getRawParentsArray(p).filter(pid => pid !== personId);
+        // Check if any REAL parents remain after stripping the deleted person
+        const realParentsRemain = newParents.some(pid => !isSentinel(pid));
+
+        if (!realParentsRemain) {
+            // No real parents left — could be [] or only sentinels like ['__nc__'].
+            // Either way, anchor in-place with __nc__ + gen tag so they stay
+            // clustered and at the correct generation row, not kicked to Gen 1.
             const otherMembers = FAMILY_DB.people.filter(q => q.id !== personId && q.id !== p.id);
             if (otherMembers.length > 0) {
                 const currentGen = getPersonGenerationLevel(p);
-                await updatePersonInDB(p.id, {
-                    parents: JSON.stringify(['__nc__', `__ncgen${currentGen}__`]),
-                    is_root: false
-                });
+                return {
+                    id: p.id,
+                    data: {
+                        parents: JSON.stringify(['__nc__', `__ncgen${currentGen}__`]),
+                        is_root: false
+                    }
+                };
             } else {
-                // No one else in the tree — this person becomes the sole root
-                await updatePersonInDB(p.id, {
-                    parents: JSON.stringify([]),
-                    is_root: true
-                });
+                return {
+                    id: p.id,
+                    data: { parents: JSON.stringify([]), is_root: true }
+                };
             }
         } else {
-            await updatePersonInDB(p.id, {
-                parents: JSON.stringify(newParents)
-            });
+            // Real parents still exist — just strip the deleted person, keep everything else
+            return {
+                id: p.id,
+                data: { parents: JSON.stringify(newParents) }
+            };
         }
+    });
+
+    // Apply all DB writes — decisions already made synchronously above
+    for (const update of updates) {
+        await updatePersonInDB(update.id, update.data);
+        // Mirror in memory so computeGenerations stays consistent
+        // before the next loadPeople() call
+        const inMemory = FAMILY_DB.people.find(q => q.id === update.id);
+        if (inMemory) inMemory.parents = update.data.parents;
     }
+
     const spouseUpdates = FAMILY_DB.people.filter(p => p.spouse === personId);
     for (const p of spouseUpdates) {
         await updatePersonInDB(p.id, { spouse: null });
