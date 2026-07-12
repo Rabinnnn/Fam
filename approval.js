@@ -89,8 +89,8 @@ window.loadApprovalList = async function() {
         return;
     }
 
-    const pending  = users.filter(u => !u.is_approved);
-    const approved = users.filter(u =>  u.is_approved);
+    const pending  = users.filter(u => !u.is_approved || u.is_approved === '0' || u.is_approved === 0);
+    const approved = users.filter(u =>  u.is_approved && u.is_approved !== '0');
 
     let html = '';
 

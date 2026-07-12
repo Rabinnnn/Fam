@@ -122,7 +122,8 @@ if ($action === 'signup' && $method === 'POST') {
     if (strlen($username) < 3)  sendJson(['error' => 'Username must be at least 3 characters'], 400);
     if (!preg_match('/^[a-zA-Z0-9_]+$/', $username)) sendJson(['error' => 'Username may only contain letters, numbers, and underscores'], 400);
     if (strlen($password) < 6)  sendJson(['error' => 'Password must be at least 6 characters'], 400);
-    if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL)) sendJson(['error' => 'Invalid email address'], 400);
+    if (!$email)                                              sendJson(['error' => 'Email address is required'], 400);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL))           sendJson(['error' => 'Invalid email address'], 400);
 
     // Check uniqueness
     $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");

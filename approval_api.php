@@ -133,7 +133,13 @@ if ($action === 'list' && $method === 'GET') {
         WHERE is_admin = 0
         ORDER BY is_approved ASC, created_at DESC
     ");
-    sendJson($stmt->fetchAll());
+    $users = $stmt->fetchAll();
+    // Cast is_approved to bool so JS receives true/false, not "0"/"1" strings
+    // (PDO returns TINYINT columns as strings by default, which breaks JS comparisons)
+    foreach ($users as &$u) {
+        $u['is_approved'] = (bool)$u['is_approved'];
+    }
+    sendJson($users);
 }
 
 // ────────────────────────────────────────────────────────────

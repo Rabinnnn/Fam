@@ -47,6 +47,8 @@ async function signup() {
     if (!username)              return showError('❌ Please enter a username');
     if (username.length < 3)    return showError('❌ Username must be at least 3 characters');
     if (!/^[a-zA-Z0-9_]+$/.test(username)) return showError('❌ Username may only contain letters, numbers, and underscores');
+    if (!email)                 return showError('❌ Please enter your email address');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('❌ Please enter a valid email address');
     if (!password)              return showError('❌ Please enter a password');
     if (password.length < 6)    return showError('❌ Password must be at least 6 characters');
     if (password !== confirm)   return showError('❌ Passwords do not match');
