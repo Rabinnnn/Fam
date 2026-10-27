@@ -71,6 +71,47 @@ function generateToken() {
     return bin2hex(random_bytes(32)); // 64-char hex, cryptographically secure
 }
 
+/**
+ * Server-side email hardening for signup.
+ * Native PHP only — no extensions, no libraries, no cPanel config.
+ * Returns [bool $ok, string $errorMessage].
+ */
+function validate_signup_email(string $email): array {
+    // (1) Syntax — defense in depth; the caller already checks this too.
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return [false, 'Invalid email address'];
+    }
+
+    [, $domain] = explode('@', $email, 2);
+    $domain = strtolower($domain);
+
+    // (2) Let local dev through untouched.
+    if (in_array($domain, ['localhost', '127.0.0.1', 'example.test'], true)
+        || substr($domain, -5) === '.test'
+        || substr($domain, -6) === '.local') {
+        return [true, ''];
+    }
+
+    // (3) Disposable / throwaway providers.
+    static $disposable = [
+        'mailinator.com', 'guerrillamail.com', '10minutemail.com', 'tempmail.com',
+        'throwawaymail.com', 'yopmail.com', 'trashmail.com', 'sharklasers.com',
+        'getnada.com', 'dispostable.com', 'fakeinbox.com', 'maildrop.cc',
+        'temp-mail.org', 'tempail.com', 'mohmal.com', 'emailondeck.com',
+        'mailnesia.com', 'spamgourmet.com', 'mytemp.email', 'burnermail.io',
+        'grr.la', 'guerrillamail.info', 'spam4.me', 'tempr.email',
+    ];
+    if (in_array($domain, $disposable, true)) {
+        return [false, 'Please use a permanent email address, not a disposable one'];
+    }
+
+    // (4) Domain must actually be able to receive mail (MX, falling back to A).
+    if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
+        return [false, 'This email domain cannot receive mail. Please check the address'];
+    }
+
+    return [true, ''];
+}
 // ── Session verification (reusable) ─────────────────────────
 function verifySession($pdo) {
     $token = getToken();
@@ -129,7 +170,8 @@ if ($action === 'signup' && $method === 'POST') {
     $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
     $stmt->execute([$username]);
     if ($stmt->fetch()) sendJson(['error' => 'Username already exists'], 409);
-
+    [$ok, $msg] = validate_signup_email($email);
+    if (!$ok) sendJson(['error' => $msg], 400);
     // Hash password with bcrypt (cost factor 12)
     $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
