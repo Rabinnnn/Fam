@@ -90,13 +90,13 @@ function requireAdmin($pdo) {
 function sendApprovalEmail($toEmail, $username, $approved) {
     if (!$toEmail) return; // no email on file — skip silently
 
-    $siteName = 'Ancestral Threads';
+    $siteName = 'Vangenderen Family';
     $fromEmail = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
 
     if ($approved) {
         $subject = "Your {$siteName} account has been approved";
         $body    = "Hi {$username},\r\n\r\n"
-                 . "Your account on {$siteName} has been approved by an administrator.\r\n"
+                 . "Your account on {$siteName} has been approved by the administrator.\r\n"
                  . "You can now sign in at: https://" . ($_SERVER['HTTP_HOST'] ?? '') . "/login.html\r\n\r\n"
                  . "Welcome to the family!\r\n\r\n"
                  . "— The {$siteName} Team";
