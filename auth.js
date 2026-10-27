@@ -25,7 +25,7 @@ function showSuccess(message) {
     if (!el) return;
     el.textContent = message;
     el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 3000);
+    setTimeout(() => el.classList.remove('show'), 5000);
 }
 
 function setLoading(btnId, loading) {
@@ -147,7 +147,7 @@ document.querySelectorAll('.auth-tab').forEach(tab => {
         document.getElementById('signupForm').classList.remove('active');
         document.getElementById(`${form}Form`).classList.add('active');
         document.getElementById('errorMessage').classList.remove('show');
-        document.getElementById('successMessage').classList.remove('show');
+        // document.getElementById('successMessage').classList.remove('show');
     });
 });
 
