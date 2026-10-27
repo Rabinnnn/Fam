@@ -51,6 +51,23 @@ function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]);
 }
+function readImageAsDataURL(file, maxBytes = 500 * 1024) {
+    return new Promise((resolve, reject) => {
+        if (!file) return resolve(null);
+        if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) {
+            return reject(new Error('Only JPEG, PNG, WebP, or GIF images are allowed.'));
+        }
+        if (file.size > maxBytes) {
+            return reject(new Error(
+                `Image is too large (${(file.size / 1024).toFixed(0)} KB). Maximum is ${(maxBytes / 1024).toFixed(0)} KB.`
+            ));
+        }
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read image file.'));
+        reader.readAsDataURL(file);
+    });
+}
 function validateFullName(name) {
     const t = name.trim();
     if (!t) return { valid: false, message: 'Name cannot be empty' };
@@ -884,7 +901,8 @@ function renderWholeFamilyTree() {
 // ==============================================================
 window.showFirstMemberModal = function() {
     document.getElementById('wholeTreeAddModal')?.remove();
-    
+    window._wtAvatarData = null;
+
     const existingFamilies = [...new Set(FAMILY_DB.people.map(p => p.family_name).filter(Boolean))].sort();
     const fnOpts = existingFamilies.map(fn => `<option value="${fn}">${escapeHtml(fn)}</option>`).join('');
 
@@ -916,7 +934,16 @@ window.showFirstMemberModal = function() {
                 <div class="form-group">
                     <label>Email <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
                     <input type="email" id="wtEmail" placeholder="name@example.com"
-                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                        style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                </div>
+                <div class="form-group">
+                    <label>Profile Picture <span style="color:#aaa;font-weight:normal;">(optional, max 500 KB — JPEG/PNG/WebP/GIF)</span></label>
+                    <input type="file" id="wtAvatar" accept="image/jpeg,image/png,image/webp,image/gif"
+                        style="width:100%;padding:0.4rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;font-size:0.8rem;">
+                    <div style="margin-top:0.4rem;">
+                        <img id="wtAvatarPreview" alt=""
+                            style="display:none;width:64px;height:64px;object-fit:cover;border-radius:50%;border:1px solid #e2cfb0;">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Family Name <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
@@ -938,6 +965,24 @@ window.showFirstMemberModal = function() {
         </div>`);
 
     document.getElementById('wtDob')?.addEventListener('click', function() { this.showPicker(); });
+    document.getElementById('wtAvatar')?.addEventListener('change', async function() {
+        const preview = document.getElementById('wtAvatarPreview');
+        const file = this.files?.[0];
+        window._wtAvatarData = null;
+        if (!file) { preview.style.display = 'none'; preview.src = ''; return; }
+        try {
+            const dataUrl = await readImageAsDataURL(file);
+            window._wtAvatarData = dataUrl;
+            preview.src = dataUrl;
+            preview.style.display = 'block';
+        } catch (e) {
+            alert(e.message);
+            this.value = '';
+            preview.style.display = 'none';
+            preview.src = '';
+            window._wtAvatarData = null;
+        }
+    });
 };
 
 window.submitFirstMember = async function() {
@@ -965,7 +1010,9 @@ window.submitFirstMember = async function() {
             parents: JSON.stringify([]),
             is_root: true,
             family_name: familyName,
-            spouse: null
+            spouse: null,
+            profile_picture: window._wtAvatarData || null
+
         });
         await loadPeople();
         personOwners[newId] = currentUser; savePersonOwners();
@@ -981,6 +1028,7 @@ window.submitFirstMember = async function() {
 // ==============================================================
 window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     document.getElementById('wholeTreeAddModal')?.remove();
+    window._wtAvatarData = null;
     const rowIds = rowIdsStr ? rowIdsStr.split(',').filter(Boolean) : [];
 
     const rowOpts = rowIds.map(id => {
@@ -1034,7 +1082,16 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
                 <div class="form-group">
                     <label>Email <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
                     <input type="email" id="wtEmail" placeholder="name@example.com"
-                           style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                        style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
+                </div>
+                <div class="form-group">
+                    <label>Profile Picture <span style="color:#aaa;font-weight:normal;">(optional, max 500 KB — JPEG/PNG/WebP/GIF)</span></label>
+                    <input type="file" id="wtAvatar" accept="image/jpeg,image/png,image/webp,image/gif"
+                        style="width:100%;padding:0.4rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;font-size:0.8rem;">
+                    <div style="margin-top:0.4rem;">
+                        <img id="wtAvatarPreview" alt=""
+                            style="display:none;width:64px;height:64px;object-fit:cover;border-radius:50%;border:1px solid #e2cfb0;">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Family Name <span style="color:#aaa;font-weight:normal;">(optional)</span></label>
@@ -1068,6 +1125,24 @@ window.showWholeTreeAddModal = function(genNum, rowIdsStr, depthIdx, isOldest) {
     window._wtNextGenPeople = nextGenPeople;
 
     document.getElementById('wtDob')?.addEventListener('click', function() { this.showPicker(); });
+    document.getElementById('wtAvatar')?.addEventListener('change', async function() {
+        const preview = document.getElementById('wtAvatarPreview');
+        const file = this.files?.[0];
+        window._wtAvatarData = null;
+        if (!file) { preview.style.display = 'none'; preview.src = ''; return; }
+        try {
+            const dataUrl = await readImageAsDataURL(file);
+            window._wtAvatarData = dataUrl;
+            preview.src = dataUrl;
+            preview.style.display = 'block';
+        } catch (e) {
+            alert(e.message);
+            this.value = '';
+            preview.style.display = 'none';
+            preview.src = '';
+            window._wtAvatarData = null;
+        }
+    });
 };
 
 // ==============================================================
@@ -1340,7 +1415,8 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 parents: JSON.stringify(aboveFinalParents),
                 is_root: true,
                 family_name: familyName,
-                spouse: null
+                spouse: null,
+                profile_picture: window._wtAvatarData || null
             });
 
             // Update selected existing children to have new person as parent
@@ -1392,7 +1468,9 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 parents: JSON.stringify(finalParents),
                 is_root: isRoot,
                 family_name: familyName,
-                spouse: null
+                spouse: null,
+                profile_picture: window._wtAvatarData || null
+
             });
 
         } else if (placement === 'below') {
@@ -1404,7 +1482,9 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 parents: JSON.stringify(finalParentIds),
                 is_root: isRoot,
                 family_name: familyName,
-                spouse: null
+                spouse: null,
+                profile_picture: window._wtAvatarData || null
+
             });
 
         } else if (placement === 'spouse') {
@@ -1422,7 +1502,9 @@ window.submitWholeTreeAdd = async function(rowIdsStr, depthIdx, isOldest, genNum
                 parents: JSON.stringify(spouseFinalParents),
                 is_root: isRoot,
                 family_name: familyName,
-                spouse: finalSpouseId
+                spouse: finalSpouseId,
+                profile_picture: window._wtAvatarData || null
+
             });
             await updatePersonInDB(finalSpouseId, { spouse: newId });
         }
@@ -1608,6 +1690,20 @@ function showPersonDetailsModal(personId) {
     const person = findPersonById(personId);
     if (!person) return;
     document.getElementById('personDetailsModal')?.remove();
+
+    // Strictly validate the stored data URL before rendering it
+    const pic = (typeof person.profile_picture === 'string'
+                 && /^data:image\/(jpeg|png|webp|gif);base64,/i.test(person.profile_picture))
+        ? person.profile_picture
+        : null;
+
+    const picHtml = pic ? `
+        <div style="display:flex;justify-content:center;margin-bottom:0.5rem;">
+            <img src="${pic}" alt="Profile picture of ${escapeHtml(person.name)}"
+                 style="width:110px;height:110px;object-fit:cover;border-radius:50%;
+                        border:3px solid #e2cfb0;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+        </div>` : '';
+
     document.body.insertAdjacentHTML('beforeend', `
         <div id="personDetailsModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);
              display:flex;align-items:center;justify-content:center;z-index:10500;padding:1rem;">
@@ -1618,6 +1714,7 @@ function showPersonDetailsModal(personId) {
                     <button onclick="closePersonDetailsModal()"
                             style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888;">✕</button>
                 </div>
+                ${picHtml}
                 <div style="display:flex;flex-direction:column;gap:0.75rem;font-size:0.9rem;color:#3a2010;">
                     <div>
                         <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:0.03em;">Name</div>
@@ -1714,6 +1811,23 @@ function showEditModal(person) {
                            style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:0.5rem;box-sizing:border-box;">
                 </div>
                 <div class="form-group">
+                    <label>Profile Picture <span style="font-weight:400;color:#888;">(optional, max 500 KB)</span></label>
+                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                        <img id="editAvatarPreview" alt=""
+                            src="${/^data:image\/(jpeg|png|webp|gif);base64,/i.test(person.profile_picture || '') ? person.profile_picture : ''}"
+                            style="width:64px;height:64px;object-fit:cover;border-radius:50%;border:2px solid #e2cfb0;
+                                    ${person.profile_picture ? '' : 'display:none;'}">
+                        <div style="flex:1;min-width:0;">
+                            <input type="file" id="editAvatarFile" accept="image/jpeg,image/png,image/webp,image/gif"
+                                style="width:100%;font-size:0.75rem;">
+                            <button type="button" id="editAvatarRemoveBtn" onclick="editRemoveAvatar()"
+                                    style="background:#dc3545;color:white;border:none;border-radius:0.4rem;
+                                        padding:0.25rem 0.6rem;cursor:pointer;font-size:0.72rem;margin-top:0.35rem;
+                                        ${person.profile_picture ? '' : 'display:none;'}">Remove picture</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label>Family Name <span style="font-weight:400;color:#888;">(select or type new)</span></label>
                     <input type="text" id="editFamilyName" list="editFamilyList"
                            value="${escapeHtml(person.family_name || '')}"
@@ -1776,6 +1890,26 @@ function showEditModal(person) {
     window._editParents  = currentParents.map(p => p.id);
     window._editChildren = currentChildren.map(p => p.id);
     window._editPersonId = person.id;
+    window._editAvatarData    = person.profile_picture || null;
+    window._editAvatarChanged = false;
+
+    document.getElementById('editAvatarFile')?.addEventListener('change', async function() {
+        const preview = document.getElementById('editAvatarPreview');
+        const removeBtn = document.getElementById('editAvatarRemoveBtn');
+        const file = this.files?.[0];
+        if (!file) return;
+        try {
+            const dataUrl = await readImageAsDataURL(file);
+            window._editAvatarData    = dataUrl;
+            window._editAvatarChanged = true;
+            preview.src = dataUrl;
+            preview.style.display = 'block';
+            if (removeBtn) removeBtn.style.display = 'inline-block';
+        } catch (e) {
+            alert(e.message);
+            this.value = '';
+        }
+    });
 }
 
 window.editRemoveParent = function(parentId) {
@@ -2010,6 +2144,12 @@ window.saveEdit = async function(personId) {
     if (dob) updates.dob = dob;
     updates.email = email;
 
+    // Only send profile_picture when the user actually changed / removed it,
+    // so a plain "edit name" doesn't accidentally clear an existing picture.
+    if (window._editAvatarChanged) {
+        updates.profile_picture = window._editAvatarData || null;
+    }
+
     try {
         // Handle old spouse removal (if any)
         if (oldSpouseId && oldSpouseId !== spouseId) {
@@ -2063,6 +2203,15 @@ window.saveEdit = async function(personId) {
 };
 
 window.closeEditModal = function() { document.getElementById('editModal')?.remove(); };
+window.editRemoveAvatar = function() {
+    document.getElementById('editAvatarPreview').style.display = 'none';
+    document.getElementById('editAvatarPreview').src = '';
+    document.getElementById('editAvatarRemoveBtn').style.display = 'none';
+    const fileInput = document.getElementById('editAvatarFile');
+    if (fileInput) fileInput.value = '';
+    window._editAvatarData    = null;
+    window._editAvatarChanged = true;
+};
 window.findPersonById = findPersonById;
 window.showEditModal = showEditModal;
 

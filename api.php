@@ -101,8 +101,8 @@ elseif ($method === 'POST') {
         if ($table === 'people') {
             // Added spouse and custom_gen to the INSERT
             $stmt = $pdo->prepare("INSERT INTO people 
-                (id, uid, name, gender, dob, parents, is_root, family_name, spouse, custom_gen, email)
-                VALUES (:id, :uid, :name, :gender, :dob, :parents, :is_root, :family_name, :spouse, :custom_gen, :email)");
+                (id, uid, name, gender, dob, parents, is_root, family_name, spouse, custom_gen, email, profile_picture)
+                VALUES (:id, :uid, :name, :gender, :dob, :parents, :is_root, :family_name, :spouse, :custom_gen, :email, :profile_picture)");
             $stmt->execute([
                 ':id'          => $data['id'],
                 ':uid'         => $data['uid'],
@@ -115,6 +115,8 @@ elseif ($method === 'POST') {
                 ':spouse'      => $data['spouse'] ?? null,
                 ':custom_gen'  => $data['custom_gen'] ?? null,
                 ':email'       => $data['email'] ?? null,
+                ':profile_picture' => $data['profile_picture'] ?? null,
+
             ]);
             sendJson(['message' => 'Created'], 201);
         } elseif ($table === 'family_colors') {
@@ -136,7 +138,7 @@ elseif ($method === 'PATCH') {
     $data = getRequestBody();
     $fields = [];
     $params = [':id' => $id];
-    $allowed = ['name', 'gender', 'dob', 'parents', 'is_root', 'family_name', 'spouse', 'custom_gen', 'email'];
+    $allowed = ['name', 'gender', 'dob', 'parents', 'is_root', 'family_name', 'spouse', 'custom_gen', 'email', 'profile_picture'];
     foreach ($allowed as $field) {
         if (array_key_exists($field, $data)) {
             $fields[] = "$field = :$field";
