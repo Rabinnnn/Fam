@@ -90,14 +90,17 @@ function requireAdmin($pdo) {
 function sendApprovalEmail($toEmail, $username, $approved) {
     if (!$toEmail) return; // no email on file — skip silently
 
+    // $siteName = 'Vangenderen Family';
+    // $fromEmail = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     $siteName = 'Vangenderen Family';
-    $fromEmail = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $fromEmail = 'noreply@vangenderen.family';
 
     if ($approved) {
         $subject = "Your {$siteName} account has been approved";
         $body    = "Hi {$username},\r\n\r\n"
                  . "Your account on {$siteName} has been approved by the administrator.\r\n"
-                 . "You can now sign in at: https://" . ($_SERVER['HTTP_HOST'] ?? '') . "/login.html\r\n\r\n"
+                //  . "You can now sign in at: https://" . ($_SERVER['HTTP_HOST'] ?? '') . "/login.html\r\n\r\n"
+                 . "You can now sign in at: https://vangenderen.family/login.html\r\n\r\n"
                  . "Welcome to the family!\r\n\r\n"
                  . "— The {$siteName} Team";
     } else {
@@ -109,7 +112,8 @@ function sendApprovalEmail($toEmail, $username, $approved) {
     }
 
     $headers  = "From: {$siteName} <{$fromEmail}>\r\n";
-    $headers .= "Reply-To: {$fromEmail}\r\n";
+    // $headers .= "Reply-To: {$fromEmail}\r\n";
+    $headers .= "Reply-To: admin@vangenderen.family\r\n";
     $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
 

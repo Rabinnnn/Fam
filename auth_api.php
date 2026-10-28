@@ -112,6 +112,49 @@ function validate_signup_email(string $email): array {
 
     return [true, ''];
 }
+
+/**
+ * Email every admin that a new user has signed up and is pending approval.
+ * Mirrors sendApprovalEmail()'s style (plain-text mail(), @ suppression).
+ * Failures are logged and swallowed — signup itself must never break.
+ */
+function notifyAdminsOfSignup($pdo, $newUsername, $newEmail) {
+    try {
+        // All admin emails on file (skips admins with no email configured)
+        $stmt   = $pdo->query("SELECT email FROM users WHERE is_admin = 1 AND email IS NOT NULL AND email <> ''");
+        $admins = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (!$admins) return; // no admin inboxes to notify — nothing to do
+
+        // $siteName  = 'Vangenderen Family';
+        // $host      = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        // $fromEmail = 'noreply@' . $host;
+        // $adminUrl  = 'https://' . $host . '/platform.html'; // admin panel → Admin tab → Approvals
+        $siteName  = 'Vangenderen Family';
+        $fromEmail = 'noreply@vangenderen.family';           // fixed sender
+        $adminUrl  = 'https://vangenderen.family/platform.html'; // admin panel → Admin tab → Approvals
+        
+        $subject = "[{$siteName}] New signup pending approval: {$newUsername}";
+        $body    = "A new user has registered on {$siteName} and is awaiting approval.\r\n\r\n"
+                 . "Username: {$newUsername}\r\n"
+                 . "Email:    " . ($newEmail ?: '(not provided)') . "\r\n"
+                 . "Time:     " . gmdate('Y-m-d H:i:s') . " UTC\r\n\r\n"
+                 . "Review pending accounts here:\r\n{$adminUrl}\r\n\r\n"
+                 . "— {$siteName} System";
+
+        $headers  = "From: {$siteName} <{$fromEmail}>\r\n";
+        $headers .= "Reply-To: " . ($newEmail ?: $fromEmail) . "\r\n";
+        $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+        $headers .= "X-Mailer: PHP/" . phpversion();
+
+        foreach ($admins as $adminEmail) {
+            @mail($adminEmail, $subject, $body, $headers);
+        }
+    } catch (Throwable $e) {
+        // Notification is best-effort — never let it break signup
+        error_log('Admin signup notification failed: ' . $e->getMessage());
+    }
+}
+
 // ── Session verification (reusable) ─────────────────────────
 function verifySession($pdo) {
     $token = getToken();
@@ -177,6 +220,7 @@ if ($action === 'signup' && $method === 'POST') {
 
     $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, is_admin, is_approved, created_at) VALUES (?, ?, ?, 0, 0, NOW())");
     $stmt->execute([$username, $email ?: null, $hash]);
+    notifyAdminsOfSignup($pdo, $username, $email);   // ← NEW
 
     sendJson(['message' => 'Account created successfully. Please wait for an administrator to approve your account before signing in.'], 201);
 }
